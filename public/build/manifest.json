@@ -1,0 +1,166 @@
+{
+  "_navigation-_Ms0R5o1.css": {
+    "file": "assets/navigation-_Ms0R5o1.css",
+    "src": "_navigation-_Ms0R5o1.css"
+  },
+  "_pagination-NSu-3zcy.js": {
+    "file": "assets/pagination-NSu-3zcy.js",
+    "name": "pagination",
+    "imports": [
+      "_swiper-BdM3zUQW.js"
+    ],
+    "css": [
+      "assets/pagination-ZQCciRw_.css"
+    ]
+  },
+  "_pagination-ZQCciRw_.css": {
+    "file": "assets/pagination-ZQCciRw_.css",
+    "src": "_pagination-ZQCciRw_.css"
+  },
+  "_swiper-BdM3zUQW.js": {
+    "file": "assets/swiper-BdM3zUQW.js",
+    "name": "swiper",
+    "css": [
+      "assets/swiper-HzbfsHSZ.css"
+    ]
+  },
+  "_swiper-HzbfsHSZ.css": {
+    "file": "assets/swiper-HzbfsHSZ.css",
+    "src": "_swiper-HzbfsHSZ.css"
+  },
+  "editor.deps.json": {
+    "file": "assets/editor.deps-DxpY22xl.json",
+    "src": "editor.deps.json"
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-sZ4HfrGk.css",
+    "name": "app",
+    "names": [
+      "app.css"
+    ],
+    "src": "resources/css/app.css",
+    "isEntry": true,
+    "assets": [
+      "assets/PolySans Bulky Wide-VzLwgn3K.ttf",
+      "assets/btn-arrow-DSZ4x1kn.svg",
+      "assets/bottom-arrow-BE5KB43S.svg",
+      "assets/pointer-5_58814e.svg",
+      "assets/cta-mask-DkOSFVpY.svg"
+    ]
+  },
+  "resources/css/editor.css": {
+    "file": "assets/editor-q7gCkKK_.css",
+    "name": "editor",
+    "names": [
+      "editor.css"
+    ],
+    "src": "resources/css/editor.css",
+    "isEntry": true,
+    "assets": [
+      "assets/PolySans Bulky Wide-VzLwgn3K.ttf",
+      "assets/btn-arrow-DSZ4x1kn.svg",
+      "assets/bottom-arrow-BE5KB43S.svg",
+      "assets/pointer-5_58814e.svg",
+      "assets/cta-mask-DkOSFVpY.svg"
+    ]
+  },
+  "resources/fonts/PolySans Bulky Wide.ttf": {
+    "file": "assets/PolySans Bulky Wide-VzLwgn3K.ttf",
+    "src": "resources/fonts/PolySans Bulky Wide.ttf"
+  },
+  "resources/images/bottom-arrow.svg": {
+    "file": "assets/bottom-arrow-BE5KB43S.svg",
+    "src": "resources/images/bottom-arrow.svg"
+  },
+  "resources/images/btn-arrow.svg": {
+    "file": "assets/btn-arrow-DSZ4x1kn.svg",
+    "src": "resources/images/btn-arrow.svg"
+  },
+  "resources/images/cta-mask.svg": {
+    "file": "assets/cta-mask-DkOSFVpY.svg",
+    "src": "resources/images/cta-mask.svg"
+  },
+  "resources/images/pointer.svg": {
+    "file": "assets/pointer-5_58814e.svg",
+    "src": "resources/images/pointer.svg"
+  },
+  "resources/js/app.js": {
+    "file": "assets/app-Co7tsQ0p.js",
+    "name": "app",
+    "src": "resources/js/app.js",
+    "isEntry": true,
+    "dynamicImports": [
+      "resources/js/blocks/reviews.js",
+      "resources/js/blocks/tabs.js",
+      "resources/js/blocks/slider.js",
+      "resources/js/blocks/values.js",
+      "resources/js/blocks/proces.js",
+      "resources/js/blocks/overlap.js"
+    ]
+  },
+  "resources/js/blocks/overlap.js": {
+    "file": "assets/overlap-CI1hwrf-.js",
+    "name": "overlap",
+    "src": "resources/js/blocks/overlap.js",
+    "isDynamicEntry": true
+  },
+  "resources/js/blocks/proces.js": {
+    "file": "assets/proces-CxtLwN5A.js",
+    "name": "proces",
+    "src": "resources/js/blocks/proces.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_swiper-BdM3zUQW.js"
+    ],
+    "css": [
+      "assets/navigation-_Ms0R5o1.css"
+    ]
+  },
+  "resources/js/blocks/reviews.js": {
+    "file": "assets/reviews-CMAwlmRU.js",
+    "name": "reviews",
+    "src": "resources/js/blocks/reviews.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_swiper-BdM3zUQW.js",
+      "_pagination-NSu-3zcy.js"
+    ],
+    "css": [
+      "assets/navigation-_Ms0R5o1.css"
+    ]
+  },
+  "resources/js/blocks/slider.js": {
+    "file": "assets/slider-DXy2fmbv.js",
+    "name": "slider",
+    "src": "resources/js/blocks/slider.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_swiper-BdM3zUQW.js",
+      "_pagination-NSu-3zcy.js"
+    ],
+    "css": [
+      "assets/navigation-_Ms0R5o1.css"
+    ]
+  },
+  "resources/js/blocks/tabs.js": {
+    "file": "assets/tabs-DHLaxzBo.js",
+    "name": "tabs",
+    "src": "resources/js/blocks/tabs.js",
+    "isDynamicEntry": true
+  },
+  "resources/js/blocks/values.js": {
+    "file": "assets/values-Dgs1sB4a.js",
+    "name": "values",
+    "src": "resources/js/blocks/values.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_swiper-BdM3zUQW.js"
+    ]
+  },
+  "resources/js/editor.js": {
+    "file": "assets/editor-Dog8jmWw.js",
+    "name": "editor",
+    "src": "resources/js/editor.js",
+    "isEntry": true
+  }
+}
