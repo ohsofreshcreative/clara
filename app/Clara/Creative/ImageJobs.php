@@ -95,11 +95,11 @@ class ImageJobs
 	/**
 	 * Wspólne ograniczenia zlecenia: brak trwającej partii w sekcji, limit kosztu partii i dzienny budżet.
 	 */
-	public static function guard(ImageProvider $provider, int $sectionId, int $count): ?WP_Error
+	public static function guard(ImageProvider $provider, int $sectionId, int $count, bool $checkBusy = true): ?WP_Error
 	{
 		global $wpdb;
 
-		$active = (int) $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM ' . Schema::table('generations') . " WHERE section_id = %d AND kind = %s AND status IN ('queued', 'running')", $sectionId, self::KIND));
+		$active = $checkBusy ? (int) $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM ' . Schema::table('generations') . " WHERE section_id = %d AND kind = %s AND status IN ('queued', 'running')", $sectionId, self::KIND)) : 0;
 		if ($active > 0) {
 			return new WP_Error('clara_image_busy', __('Poprzednia partia obrazów dla tej sekcji jeszcze trwa — poczekaj lub ją anuluj.', 'clara'), ['status' => 409]);
 		}
@@ -412,6 +412,8 @@ class ImageJobs
 			'costSource' => $meta['result']['costSource'] ?? 'estimate',
 			'prompt' => $meta['prompt'] ?? '',
 			'remixOf' => isset($meta['remixOf']) ? (int) $meta['remixOf'] : null,
+			'quality' => $meta['quality'] ?? null,
+			'refineOf' => isset($meta['refineOf']) ? (int) $meta['refineOf'] : null,
 			'remixPrompt' => $meta['remixPrompt'] ?? null,
 			'version' => (int) ($meta['version'] ?? 1),
 			'rootId' => (int) ($meta['rootId'] ?? $row['id']),

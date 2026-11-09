@@ -33,7 +33,7 @@
     "src": "editor.deps.json"
   },
   "resources/css/app.css": {
-    "file": "assets/app-C0U9FWCR.css",
+    "file": "assets/app-Q7vbmN1q.css",
     "name": "app",
     "names": [
       "app.css"
@@ -61,7 +61,7 @@
     ]
   },
   "resources/css/clara.css": {
-    "file": "assets/clara-B6psACgU.css",
+    "file": "assets/clara-CaJMYA9q.css",
     "name": "clara",
     "names": [
       "clara.css"
@@ -70,7 +70,7 @@
     "isEntry": true
   },
   "resources/css/editor.css": {
-    "file": "assets/editor-SOec7yyU.css",
+    "file": "assets/editor-DZ4P_Chm.css",
     "name": "editor",
     "names": [
       "editor.css"
@@ -183,7 +183,7 @@
     ]
   },
   "resources/js/clara/main.tsx": {
-    "file": "assets/main-DybopF9e.js",
+    "file": "assets/main-Dn4HF2KE.js",
     "name": "main",
     "src": "resources/js/clara/main.tsx",
     "isEntry": true,

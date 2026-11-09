@@ -11,8 +11,8 @@ use WP_REST_Response;
 use WP_REST_Server;
 
 /**
- * Dashboard: POST /generate (4 warianty w kolejce) → POST /generate/{id}/render (jeden wariant,
- * klient woła równolegle) oraz kierunek projektu: PUT/DELETE /projects/{id}/direction.
+ * Dashboard: POST /generate (4 szkice w kolejce) → POST /generate/{id}/render (jeden wariant,
+ * klient woła równolegle), POST /generate/{id}/refine (szkic → wyższa jakość) oraz kierunek projektu: PUT/DELETE /projects/{id}/direction.
  */
 class GenerateController extends Controller
 {
@@ -27,6 +27,16 @@ class GenerateController extends Controller
 		register_rest_route(self::NS, '/generate/(?P<id>\d+)/render', [
 			'methods' => WP_REST_Server::CREATABLE,
 			'callback' => [$this, 'render'],
+			'permission_callback' => [Access::class, 'restPermission'],
+			'args' => ['id' => self::idArg()],
+		]);
+
+		register_rest_route(self::NS, '/generate/(?P<id>\d+)/refine', [
+			'methods' => WP_REST_Server::CREATABLE,
+			'callback' => function (WP_REST_Request $request) {
+				$result = InspirationGenerator::refine((int) $request['id'], get_current_user_id());
+				return is_wp_error($result) ? $result : new WP_REST_Response($result, 201);
+			},
 			'permission_callback' => [Access::class, 'restPermission'],
 			'args' => ['id' => self::idArg()],
 		]);

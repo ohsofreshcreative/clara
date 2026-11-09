@@ -168,6 +168,11 @@ export interface ImageItem {
   costSource: 'estimate' | 'provider';
   prompt: string;
   remixOf: number | null;
+  /** 'low' = szkic z dashboardu (do dopracowania), 'medium' = dopracowany. */
+  quality?: 'low' | 'medium' | 'high' | null;
+  refineOf?: number | null;
+  /** Tylko w kliencie: podgląd szkicu pokazywany podczas dopracowania. */
+  preview?: string;
   remixPrompt: string | null;
   version: number;
   rootId: number;
@@ -449,5 +454,6 @@ export interface InspirationResult {
 export interface InspirationOptions { projectId?: number; keepDirection?: boolean; sectionId?: number; round?: number }
 export const startInspirations = (prompt: string, options: InspirationOptions = {}) => claraFetch<InspirationResult>('generate', 'POST', { prompt, ...options });
 export const renderInspiration = (id: number) => claraFetch<ImageItem>(`generate/${id}/render`, 'POST');
+export const refineInspiration = (id: number) => claraFetch<ImageItem>(`generate/${id}/refine`, 'POST');
 export const setProjectDirection = (projectId: number, generationId: number) => claraFetch<{ direction: ProjectDirection }>(`projects/${projectId}/direction`, 'PUT', { generationId });
 export const clearProjectDirection = (projectId: number) => claraFetch<{ direction: null }>(`projects/${projectId}/direction`, 'DELETE');

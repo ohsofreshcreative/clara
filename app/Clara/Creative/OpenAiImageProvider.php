@@ -16,6 +16,14 @@ class OpenAiImageProvider implements ImageProvider
 
 	public const SIZE = '1536x1024';
 
+	public const QUALITIES = ['low', 'medium', 'high'];
+
+	/**
+	 * Szacunek USD za obraz 1536×1024 wg jakości (górne wartości z publicznych zestawień cen gpt-image-2;
+	 * filtr `clara/openai_image_cost` do aktualizacji cennika).
+	 */
+	private const COSTS = ['low' => 0.02, 'medium' => 0.05, 'high' => 0.17];
+
 	private const TIMEOUT = 240;
 
 	public static function apiKey(): string
@@ -46,10 +54,23 @@ class OpenAiImageProvider implements ImageProvider
 		return false;
 	}
 
-	/** Szacunek USD za obraz 1536×1024, jakość medium (filtr `clara/openai_image_cost` do aktualizacji cennika). */
+	public static function quality(?string $quality = null): string
+	{
+		$quality ??= (string) apply_filters('clara/openai_image_quality', 'medium');
+
+		return in_array($quality, self::QUALITIES, true) ? $quality : 'medium';
+	}
+
+	public function costFor(?string $quality = null): float
+	{
+		$quality = self::quality($quality);
+
+		return (float) apply_filters('clara/openai_image_cost', self::COSTS[$quality], $quality);
+	}
+
 	public function estimateCost(): ?float
 	{
-		return (float) apply_filters('clara/openai_image_cost', 0.06);
+		return $this->costFor();
 	}
 
 	public function generate(string $prompt, array $direction): array|WP_Error
@@ -58,17 +79,17 @@ class OpenAiImageProvider implements ImageProvider
 			'timeout' => self::TIMEOUT,
 			'redirection' => 0,
 			'headers' => ['Authorization' => 'Bearer ' . self::apiKey(), 'Content-Type' => 'application/json'],
-			'body' => self::body($this->model(), $prompt),
+			'body' => self::body($this->model(), $prompt, $direction['quality'] ?? null),
 		]);
 
-		return self::result($response, $this->estimateCost());
+		return self::result($response, $this->costFor($direction['quality'] ?? null));
 	}
 
 	/**
 	 * Generowanie z obrazem referencyjnym (kierunek projektu): endpoint edits przyjmuje obraz
 	 * jako wzorzec stylu, a prompt opisuje nowy wariant.
 	 */
-	public function generateWithReference(string $prompt, string $imageBytes, string $mime): array|WP_Error
+	public function generateWithReference(string $prompt, string $imageBytes, string $mime, ?string $quality = null): array|WP_Error
 	{
 		$boundary = 'clara' . wp_generate_password(24, false, false);
 		$ext = $mime === 'image/png' ? 'png' : 'jpg';
@@ -77,7 +98,7 @@ class OpenAiImageProvider implements ImageProvider
 			'prompt' => $prompt,
 			'n' => '1',
 			'size' => self::SIZE,
-			'quality' => (string) apply_filters('clara/openai_image_quality', 'medium'),
+			'quality' => self::quality($quality),
 			'output_format' => 'jpeg',
 		];
 		$body = '';
@@ -93,7 +114,7 @@ class OpenAiImageProvider implements ImageProvider
 			'body' => $body,
 		]);
 
-		return self::result($response, $this->estimateCost());
+		return self::result($response, $this->costFor($quality));
 	}
 
 	private static function result(mixed $response, ?float $estimate): array|WP_Error
@@ -105,14 +126,14 @@ class OpenAiImageProvider implements ImageProvider
 		return self::parse((int) wp_remote_retrieve_response_code($response), (string) wp_remote_retrieve_body($response), $estimate);
 	}
 
-	public static function body(string $model, string $prompt): string
+	public static function body(string $model, string $prompt, ?string $quality = null): string
 	{
 		return (string) wp_json_encode([
 			'model' => $model,
 			'prompt' => $prompt,
 			'n' => 1,
 			'size' => self::SIZE,
-			'quality' => (string) apply_filters('clara/openai_image_quality', 'medium'),
+			'quality' => self::quality($quality),
 			'output_format' => 'jpeg',
 		]);
 	}

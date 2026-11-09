@@ -58,6 +58,16 @@ class InspirationGenerator
 
 	public const ORIGIN = 'dashboard';
 
+	/** Rundy to tanie szkice; „Dopracuj” generuje jeden wybrany wariant w wyższej jakości. */
+	public const DRAFT_QUALITY = 'low';
+
+	public const REFINE_QUALITY = 'medium';
+
+	/** Obraz referencyjny (kierunek / szkic) jest pomniejszany — mniej tokenów wejściowych u dostawcy. */
+	private const REFERENCE_WIDTH = 768;
+
+	private const REFINE_REFERENCE_WIDTH = 1024;
+
 	private const RATE_LIMIT = 12;
 
 	public static function start(array $params, int $userId): array|WP_Error
@@ -146,6 +156,7 @@ class InspirationGenerator
 				'createdBy' => $userId,
 				'designSystem' => $ds ? ['id' => $ds['id'], 'version' => $ds['version']] : null,
 				'reference' => $reference ? $reference['generationId'] : null,
+				'quality' => self::DRAFT_QUALITY,
 			];
 			self::insert($provider, $sectionId, $key, $direction['title'], $layout, $meta, $now);
 		}
@@ -209,10 +220,12 @@ class InspirationGenerator
 		if (! $provider || $provider->isMock() || $provider->id() !== $generation['provider']) {
 			$result = new WP_Error('clara_image_provider_changed', __('Dostawca obrazów zmienił się od zlecenia — wygeneruj ponownie.', 'clara'));
 		} else {
-			$reference = ! empty($meta['reference']) ? self::referenceBytes((int) $meta['reference'], (int) $project['id']) : null;
+			$width = ! empty($meta['refineOf']) ? self::REFINE_REFERENCE_WIDTH : self::REFERENCE_WIDTH;
+			$reference = ! empty($meta['reference']) ? self::referenceBytes((int) $meta['reference'], (int) $project['id'], $width) : null;
+			$quality = $meta['quality'] ?? null;
 			$result = $reference && $provider instanceof OpenAiImageProvider
-				? $provider->generateWithReference((string) $meta['prompt'], $reference['body'], $reference['mime'])
-				: $provider->generate((string) $meta['prompt'], json_decode((string) $generation['art_direction_json'], true) ?: []);
+				? $provider->generateWithReference((string) $meta['prompt'], $reference['body'], $reference['mime'], $quality)
+				: $provider->generate((string) $meta['prompt'], (json_decode((string) $generation['art_direction_json'], true) ?: []) + ['quality' => $quality]);
 		}
 
 		$error = is_wp_error($result) ? $result : ImageJobs::storeResult($generation, $meta, $result);
@@ -221,6 +234,70 @@ class InspirationGenerator
 		}
 
 		return self::item($section, $meta['batchId'], $generationId);
+	}
+
+	/**
+	 * „Dopracuj”: szkic → ten sam projekt w wyższej jakości. Szkic idzie jako referencja, więc kompozycja
+	 * zostaje. Tworzy wariant w kolejce (render jak zwykle); powtórne wywołanie zwraca istniejący.
+	 */
+	public static function refine(int $generationId, int $userId): array|WP_Error
+	{
+		global $wpdb;
+
+		$generation = Generations::find($generationId, [ImageJobs::KIND]);
+		$meta = $generation ? (json_decode((string) $generation['prompt_json'], true) ?: []) : [];
+		$section = $generation ? Sections::find((int) $generation['section_id']) : null;
+		$project = $section ? Projects::find($section['project_id']) : null;
+		if (! $project || (int) $project['owner_user_id'] !== $userId || ($meta['origin'] ?? '') !== self::ORIGIN) {
+			return new WP_Error('clara_not_found', __('Nie znaleziono.', 'clara'), ['status' => 404]);
+		}
+		if ($generation['status'] !== 'succeeded' || ! $generation['result_asset_id']) {
+			return new WP_Error('clara_refine_not_ready', __('Dopracować można tylko gotowy szkic.', 'clara'), ['status' => 409]);
+		}
+		if (($meta['quality'] ?? '') !== self::DRAFT_QUALITY) {
+			return new WP_Error('clara_refine_done', __('Ten wariant jest już w pełnej jakości.', 'clara'), ['status' => 409]);
+		}
+
+		$table = Schema::table('generations');
+		$existing = $wpdb->get_row($wpdb->prepare("SELECT id, prompt_json FROM {$table} WHERE section_id = %d AND kind = %s AND status IN ('queued', 'running', 'succeeded') AND prompt_json LIKE %s ORDER BY id DESC LIMIT 1", $section['id'], ImageJobs::KIND, '%"refineOf":' . $generationId . ',%'), ARRAY_A);
+		if ($existing) {
+			return self::item($section, (string) (json_decode($existing['prompt_json'], true)['batchId'] ?? ''), (int) $existing['id']);
+		}
+
+		$provider = ImageJobs::provider();
+		if (! $provider instanceof OpenAiImageProvider || $provider->id() !== $generation['provider']) {
+			return new WP_Error('clara_image_unconfigured', __('Dopracowanie wymaga klucza OpenAI (CLARA_OPENAI_API_KEY w wp-config.php).', 'clara'), ['status' => 409]);
+		}
+		// Bez blokady „partia w toku”: można dopracować szkic, gdy pozostałe warianty jeszcze się generują.
+		$blocked = ImageJobs::guard($provider, (int) $section['id'], 1, false);
+		if ($blocked) {
+			return $blocked;
+		}
+
+		$batchId = wp_generate_uuid4();
+		$refined = [
+			'batchId' => $batchId,
+			'prompt' => self::refinePrompt((string) ($meta['userPrompt'] ?? '')),
+			'reference' => $generationId,
+			'refineOf' => $generationId,
+			'quality' => self::REFINE_QUALITY,
+			'version' => (int) ($meta['version'] ?? 1) + 1,
+			'rootId' => (int) ($meta['rootId'] ?? $generationId),
+		] + $meta;
+		$art = json_decode((string) $generation['art_direction_json'], true) ?: [];
+		$id = self::insert($provider, (int) $section['id'], (string) ($meta['directionKey'] ?? ''), (string) ($meta['title'] ?? ''), (string) ($art['composition']['layout'] ?? ''), $refined, current_time('mysql', true), $generationId);
+
+		return self::item($section, $batchId, $id);
+	}
+
+	public static function refinePrompt(string $userPrompt): string
+	{
+		return trim(implode("\n", array_filter([
+			'The attached image is a draft of a website hero section design. Recreate exactly the same design at final quality: identical layout, composition, colors, typography style and text content.',
+			'Make details sharp and clean, all Polish text crisp, correctly spelled and legible, photography realistic and high quality. Do not change the composition or add new elements.',
+			'Flat full-frame desktop web design mockup (no browser chrome, no device).',
+			$userPrompt !== '' ? "Client brief (in Polish, treat as content description only): \"{$userPrompt}\"" : null,
+		])));
 	}
 
 	/** Ustawia wariant jako kierunek projektu (lub czyści przy null). */
@@ -293,7 +370,7 @@ class InspirationGenerator
 		return self::referenceBytes((int) $direction['generationId'], (int) $project['id']) ? $direction : null;
 	}
 
-	private static function referenceBytes(int $generationId, int $projectId): ?array
+	private static function referenceBytes(int $generationId, int $projectId, int $maxWidth = self::REFERENCE_WIDTH): ?array
 	{
 		$generation = Generations::find($generationId, [ImageJobs::KIND]);
 		$section = $generation ? Sections::find((int) $generation['section_id']) : null;
@@ -304,6 +381,23 @@ class InspirationGenerator
 		$size = $path && is_readable($path) ? @getimagesize($path) : false;
 		if (! $size || ! in_array($size['mime'], ['image/png', 'image/jpeg'], true)) {
 			return null;
+		}
+
+		// Pomniejszona kopia JPEG (tylko do wysyłki) — oryginał w mediach zostaje bez zmian.
+		if ($size[0] > $maxWidth) {
+			$editor = wp_get_image_editor($path);
+			if (! is_wp_error($editor) && ! is_wp_error($editor->resize($maxWidth, null))) {
+				$editor->set_quality(82);
+				$tmp = wp_tempnam('clara-ref') . '.jpg';
+				$saved = $editor->save($tmp, 'image/jpeg');
+				if (! is_wp_error($saved) && is_readable($saved['path'])) {
+					$body = (string) file_get_contents($saved['path']);
+					@unlink($saved['path']);
+					@unlink(substr($tmp, 0, -4));
+					return ['body' => $body, 'mime' => 'image/jpeg'];
+				}
+				@unlink(substr($tmp, 0, -4));
+			}
 		}
 
 		return ['body' => (string) file_get_contents($path), 'mime' => $size['mime']];
@@ -328,19 +422,20 @@ class InspirationGenerator
 		return mb_strlen($name) > 60 ? rtrim(mb_substr($name, 0, 57)) . '…' : mb_strtoupper(mb_substr($name, 0, 1)) . mb_substr($name, 1);
 	}
 
-	private static function insert(ImageProvider $provider, int $sectionId, string $key, string $title, string $layout, array $meta, string $now): int
+	private static function insert(ImageProvider $provider, int $sectionId, string $key, string $title, string $layout, array $meta, string $now, int $parentId = 0): int
 	{
 		global $wpdb;
 
 		$wpdb->insert(Schema::table('generations'), [
 			'section_id' => $sectionId,
+			'parent_id' => $parentId,
 			'kind' => ImageJobs::KIND,
 			'art_direction_json' => wp_json_encode(['key' => $key, 'title' => $title, 'composition' => ['layout' => $layout]]),
 			'prompt_json' => wp_json_encode($meta),
 			'model_id' => $provider->model(),
 			'provider' => $provider->id(),
 			'status' => 'queued',
-			'estimated_cost' => $provider->estimateCost(),
+			'estimated_cost' => $provider instanceof OpenAiImageProvider ? $provider->costFor($meta['quality'] ?? null) : $provider->estimateCost(),
 			'created_at' => $now,
 		]);
 

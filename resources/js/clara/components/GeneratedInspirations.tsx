@@ -42,10 +42,11 @@ interface Props {
   more?: boolean;
   directionId: number | null;
   onChooseDirection: (item: ImageItem) => Promise<void>;
+  onRefine: (item: ImageItem) => Promise<void>;
 }
 
 /** 4 inspiracje sekcji ładowane niezależnie; każdą można obrać jako kierunek projektu. */
-export default function GeneratedInspirations({ result, startedAt, more = false, directionId, onChooseDirection }: Props) {
+export default function GeneratedInspirations({ result, startedAt, more = false, directionId, onChooseDirection, onRefine }: Props) {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [choosing, setChoosing] = useState<number | null>(null);
   const items = result.batch.items;
@@ -53,6 +54,16 @@ export default function GeneratedInspirations({ result, startedAt, more = false,
   const active = done < items.length;
   const elapsed = useElapsed(active, startedAt);
   const projectPath = `projects/${result.project.id}`;
+
+  const [refining, setRefining] = useState<number | null>(null);
+  const refine = async (item: ImageItem) => {
+    setRefining(item.id);
+    try {
+      await onRefine(item);
+    } finally {
+      setRefining(null);
+    }
+  };
 
   const choose = async (item: ImageItem) => {
     setChoosing(item.id);
@@ -76,6 +87,7 @@ export default function GeneratedInspirations({ result, startedAt, more = false,
               <a href={href(projectPath)} onClick={(e) => { e.preventDefault(); navigate(projectPath); }} className="text-accent-300 underline-offset-4 hover:underline">{result.project.name}</a>
               {' '}· {result.model} · remix, Layout JSON i eksport do Figmy znajdziesz w projekcie.
             </p>
+            <p className="text-sm text-muted">Szybkie szkice — przy wybranym wariancie kliknij „Dopracuj”, aby dostać wersję w wyższej jakości.</p>
           </div>
           <p className="text-sm tabular-nums text-accent-300" role="status" data-testid="generated-progress">
             {active ? `Generowanie ${done}/${items.length} · ${clock(elapsed)}` : `Gotowe ${items.filter((i) => i.status === 'succeeded').length}/${items.length}`}
@@ -97,7 +109,16 @@ export default function GeneratedInspirations({ result, startedAt, more = false,
               aria-labelledby={`inspiration-${item.id}`}
               data-testid="generated-item"
             >
-              {pending(item) ? (
+              {pending(item) && item.preview ? (
+                <div className="relative overflow-hidden rounded-xl border border-white/10" data-testid="refine-loading">
+                  <img src={item.preview} alt="" className="block h-auto w-full opacity-60 blur-[2px]" />
+                  <div className="shimmer absolute inset-0" />
+                  <p className="absolute inset-0 flex items-center justify-center gap-3 bg-ink-950/40 text-sm" role="status">
+                    <span aria-hidden="true" className="size-5 rounded-full border-2 border-accent-300/15 border-t-accent-300/70 motion-safe:animate-spin [animation-duration:1.6s]" />
+                    Dopracowuję wariant {item.directionKey} w wyższej jakości…
+                  </p>
+                </div>
+              ) : pending(item) ? (
                 <LoadingTile item={item} elapsed={elapsed} index={index} />
               ) : item.image ? (
                 <img
@@ -113,9 +134,17 @@ export default function GeneratedInspirations({ result, startedAt, more = false,
                 </p>
               )}
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 id={`inspiration-${item.id}`} className="font-semibold">Wariant {item.directionKey} · {item.title}</h3>
+                <h3 id={`inspiration-${item.id}`} className="font-semibold">
+                  Wariant {item.directionKey} · {item.title}
+                  {item.refineOf ? <span className="ml-2 text-sm font-normal text-accent-300">· dopracowany</span> : item.quality === 'low' ? <span className="ml-2 text-sm font-normal text-muted">· szkic</span> : null}
+                </h3>
                 {item.image && (
                   <div className="flex flex-wrap gap-2">
+                    {item.quality === 'low' && (
+                      <Button variant="ghost" onClick={() => refine(item)} disabled={refining !== null} data-testid="refine">
+                        {refining === item.id ? 'Zlecam…' : 'Dopracuj'}
+                      </Button>
+                    )}
                     {isDirection ? (
                       <span className="flex items-center gap-2 rounded-xl border border-accent-400/60 px-4 py-2 text-accent-300">
                         <Icon name="sparkles" className="size-4" />Kierunek projektu

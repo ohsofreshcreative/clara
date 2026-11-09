@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from '@wordpress/element';
-import { errorMessage, listProjects, renderInspiration, setProjectDirection, startInspirations, type ImageItem, type InspirationResult, type Project } from '../api';
+import { errorMessage, listProjects, refineInspiration, renderInspiration, setProjectDirection, startInspirations, type ImageItem, type InspirationResult, type Project } from '../api';
 import heroFigure from '../../../images/clara/hero-figure.jpg';
 import Composer from '../components/Composer';
 import DirectionToggle from '../components/DirectionToggle';
@@ -70,6 +70,31 @@ export default function Dashboard() {
 
   const onGenerate = (value: string) => run(value, false);
 
+  const replaceItem = (id: number, next: ImageItem) =>
+    setRuns((current) => current.map((r) => ({ ...r, result: { ...r.result, batch: { ...r.result.batch, items: r.result.batch.items.map((i) => (i.id === id ? next : i)) } } })));
+
+  // „Dopracuj”: szkic zostaje widoczny pod nakładką, aż przyjdzie wersja w wyższej jakości.
+  const onRefine = async (item: ImageItem) => {
+    setDesignError(null);
+    let current = item.id;
+    try {
+      const fresh = { ...(await refineInspiration(item.id)), preview: item.image?.url };
+      replaceItem(current, fresh);
+      current = fresh.id;
+      if (fresh.status !== 'queued') return;
+      const done = await renderInspiration(fresh.id);
+      if (done.status === 'succeeded') {
+        replaceItem(current, done);
+      } else {
+        replaceItem(current, item);
+        setDesignError(`Nie udało się dopracować wariantu ${item.directionKey}: ${done.error?.message ?? 'spróbuj ponownie.'}`);
+      }
+    } catch (e) {
+      replaceItem(current, item);
+      setDesignError(errorMessage(e));
+    }
+  };
+
   const onChooseDirection = async (item: ImageItem) => {
     const owner = runs.find((r) => r.result.batch.items.some((i) => i.id === item.id))?.result.project.id;
     if (!owner) return;
@@ -131,6 +156,7 @@ export default function Dashboard() {
                 more={index > 0}
                 directionId={r.result.project.id === projectId ? direction?.generationId ?? null : null}
                 onChooseDirection={onChooseDirection}
+                onRefine={onRefine}
               />
             ))}
           </div>

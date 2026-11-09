@@ -145,7 +145,7 @@ try {
 		if (! str_starts_with($url, 'https://api.openai.com/')) {
 			return $pre;
 		}
-		$sent[] = ['url' => $url, 'type' => $args['headers']['Content-Type'] ?? '', 'auth' => str_starts_with($args['headers']['Authorization'] ?? '', 'Bearer '), 'hasImage' => str_contains((string) $args['body'], 'name="image[]"') && str_contains((string) $args['body'], $jpeg), 'body' => (string) $args['body']];
+		$sent[] = ['url' => $url, 'type' => $args['headers']['Content-Type'] ?? '', 'auth' => str_starts_with($args['headers']['Authorization'] ?? '', 'Bearer '), 'hasImage' => str_contains((string) $args['body'], 'name="image[]"') && str_contains((string) $args['body'], "\xFF\xD8\xFF"), 'refSize' => strlen((string) $args['body']), 'body' => (string) $args['body']];
 		return ['headers' => [], 'body' => wp_json_encode(['data' => [['b64_json' => base64_encode($jpeg)]]]), 'response' => ['code' => 200, 'message' => 'OK'], 'cookies' => [], 'filename' => null];
 	};
 	add_filter('pre_http_request', $openai, 99, 3);
@@ -155,6 +155,7 @@ try {
 	foreach ($dirItems as $item) {
 		$req('POST', "/generate/{$item['id']}/render", $a);
 	}
+	$dirSent = $sent;
 	$check('render w kierunku → multipart /images/edits z obrazem referencji i promptem stylu', count($sent) === 4 && ! array_filter($sent, fn ($r) => $r['url'] !== OpenAiImageProvider::EDITS_ENDPOINT || ! str_starts_with($r['type'], 'multipart/form-data; boundary=') || ! $r['auth'] || ! $r['hasImage'] || ! str_contains($r['body'], 'chosen design direction')), array_map(fn ($r) => array_diff_key($r, ['body' => 1]), $sent));
 	[, $dirGallery] = $req('GET', '/sections/' . (int) $dirRun['section']['id'] . '/gallery', $a);
 	$check('odmiany w kierunku zapisane jako obrazy OpenAI', count(array_filter($dirGallery['items'], fn ($i) => $i['status'] === 'succeeded' && $i['provider'] === 'openai')) === 4, array_map(fn ($i) => [$i['status'], $i['provider'] ?? null, $i['error'] ?? null], $dirGallery['items']));
@@ -162,6 +163,26 @@ try {
 	[$code, $plain] = $req('POST', '/generate', $a, ['prompt' => 'sekcja Hero basen lato', 'projectId' => $pid, 'keepDirection' => false]);
 	$req('POST', '/generate/' . $plain['batch']['items'][0]['id'] . '/render', $a);
 	$check('bez opcji kierunku → zwykłe /images/generations (JSON)', count($sent) === 1 && $sent[0]['url'] === OpenAiImageProvider::ENDPOINT && $sent[0]['type'] === 'application/json', array_map(fn ($r) => array_diff_key($r, ['body' => 1]), $sent));
+	$check('runda z dashboardu to szkic: quality=low w żądaniu', (json_decode($sent[0]['body'], true)['quality'] ?? '') === 'low', json_decode($sent[0]['body'], true)['quality'] ?? null);
+	$check('referencja kierunku pomniejszona (mniejsza niż oryginał)', $dirSent[0]['refSize'] < strlen($jpeg) || getimagesizefromstring($jpeg)[0] <= 768, [$dirSent[0]['refSize'], strlen($jpeg)]);
+
+	// „Dopracuj”: szkic → ten sam projekt w jakości medium, szkic jako referencja.
+	global $wpdb;
+	$draftId = (int) $plain['batch']['items'][0]['id'];
+	$draftCost = (float) $wpdb->get_var($wpdb->prepare('SELECT estimated_cost FROM ' . \App\Clara\Database\Schema::table('generations') . ' WHERE id = %d', $draftId));
+	$sent = [];
+	[$code, $refined] = $req('POST', "/generate/{$draftId}/refine", $a);
+	$check('refine → 201, nowy wariant w kolejce z refineOf i quality=medium', $code === 201 && $refined['status'] === 'queued' && $refined['refineOf'] === $draftId && $refined['quality'] === 'medium' && $refined['id'] !== $draftId && $refined['directionKey'] === $plain['batch']['items'][0]['directionKey'], [$code, $refined]);
+	[$code2, $again] = $req('POST', "/generate/{$draftId}/refine", $a);
+	$check('powtórny refine zwraca ten sam wariant (bez podwójnego kosztu)', $code2 === 201 && $again['id'] === $refined['id'], [$code2, $again['id'] ?? null]);
+	[$code, $done] = $req('POST', "/generate/{$refined['id']}/render", $a);
+	$body = $sent[0]['body'] ?? '';
+	$check('render dopracowania → /images/edits, quality=medium, szkic jako referencja, prompt „final quality”', $code === 200 && $done['status'] === 'succeeded' && count($sent) === 1 && $sent[0]['url'] === OpenAiImageProvider::EDITS_ENDPOINT && $sent[0]['hasImage'] && str_contains($body, "name=\"quality\"\r\n\r\nmedium") && str_contains($body, 'final quality'), [$code, $done['status'] ?? null, count($sent)]);
+	$refinedCost = (float) $wpdb->get_var($wpdb->prepare('SELECT estimated_cost FROM ' . \App\Clara\Database\Schema::table('generations') . ' WHERE id = %d', $refined['id']));
+	$check('koszt szkicu niższy niż dopracowania', $draftCost > 0 && $draftCost < $refinedCost, [$draftCost, $refinedCost]);
+	[$code] = $req('POST', "/generate/{$refined['id']}/refine", $a);
+	[$code2] = $req('POST', "/generate/{$draftId}/refine", $b);
+	$check('refine: wariant już dopracowany 409, cudzy 404', $code === 409 && $code2 === 404, [$code, $code2]);
 	remove_filter('pre_http_request', $openai, 99);
 	remove_all_filters('clara/openai_api_key');
 	add_filter('clara/image_provider', $fakeFilter);
