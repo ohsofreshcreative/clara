@@ -6,6 +6,9 @@ public/*
 
 *.log
 
+# Plugin Figmy — artefakt `yarn figma:build`
+figma-plugin/dist/
+
 # === Composer ===
 
 

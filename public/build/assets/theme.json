@@ -1514,11 +1514,6 @@
           "color": "rgb(var(--p-500))"
         },
         {
-          "name": "Primary (900)",
-          "slug": "primary-900",
-          "color": "rgb(var(--p-900))"
-        },
-        {
           "name": "Primary (Dark)",
           "slug": "primary-dark",
           "color": "rgb(var(--p-dark))"
@@ -1584,11 +1579,6 @@
           "color": "rgb(var(--t-hover))"
         },
         {
-          "name": "Third (100)",
-          "slug": "third-100",
-          "color": "rgb(var(--t-100))"
-        },
-        {
           "name": "Third (600)",
           "slug": "third-600",
           "color": "rgb(var(--t-600))"
@@ -1627,6 +1617,11 @@
           "name": "Secondary (Lighter)",
           "slug": "secondary-lighter",
           "color": "var(--color-secondary-100)"
+        },
+        {
+          "name": "Muted",
+          "slug": "muted",
+          "color": "var(--color-secondary-500)"
         }
       ]
     },

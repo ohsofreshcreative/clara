@@ -8,14 +8,20 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:clara": "bash tests/clara/run.sh",
+    "test:clara:visual": "bash tests/clara/visual.sh",
     "translate": "npm run translate:pot && npm run translate:update",
     "translate:pot": "wp i18n make-pot . ./resources/lang/sage.pot --include=\"theme.json,patterns,app,resources\"",
     "translate:update": "for file in ./resources/lang/*.po; do wp i18n update-po ./resources/lang/sage.pot $file; done",
     "translate:compile": "npm run translate:mo && npm run translate:js",
     "translate:js": "wp i18n make-json ./resources/lang --pretty-print",
-    "translate:mo": "wp i18n make-mo ./resources/lang ./resources/lang"
+    "translate:mo": "wp i18n make-mo ./resources/lang ./resources/lang",
+    "figma:build": "rolldown figma-plugin/src/code.ts --format iife --file figma-plugin/dist/code.js",
+    "figma:typecheck": "tsc --noEmit -p figma-plugin/tsconfig.json"
   },
   "devDependencies": {
+    "@figma/plugin-typings": "^1.142.0",
     "@roots/vite-plugin": "^2.2.0",
     "@tailwindcss/forms": "^0.5.11",
     "@tailwindcss/vite": "^4.3.3",
@@ -27,6 +33,7 @@
     "laravel-vite-plugin": "^3.2.0",
     "postcss": "^8.5.32",
     "tailwindcss": "^4.3.3",
+    "typescript": "~5.9.3",
     "vite": "^8.3.5"
   },
   "dependencies": {

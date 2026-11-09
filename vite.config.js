@@ -6,11 +6,11 @@ import path from 'path'
 
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const wpOrigin = env.WP_HOME || 'http://alusteel.local'
+  const wpOrigin = env.WP_HOME || 'http://clara.local'
 
   return {
     server: {
-      host: 'alusteel.local',
+      host: 'clara.local',
       port: 6011,
       strictPort: true,
       cors: true,
@@ -22,13 +22,13 @@ export default defineConfig(({ command, mode }) => {
       },
       hmr: {
         protocol: 'ws',
-        host: 'alusteel.local',
+        host: 'clara.local',
         port: 6011,
       },
     },
 
     base: command === 'build'
-      ? '/wp-content/themes/alusteel/public/build/'
+      ? '/wp-content/themes/clara/public/build/'
       : '/build/',
 
     plugins: [
@@ -42,6 +42,8 @@ export default defineConfig(({ command, mode }) => {
           'resources/js/app.js',
           'resources/css/editor.css',
           'resources/js/editor.js',
+          'resources/css/clara.css',
+          'resources/js/clara/main.tsx',
         ],
         refresh: true,
       }),

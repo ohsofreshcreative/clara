@@ -29,11 +29,11 @@
     "src": "_swiper-HzbfsHSZ.css"
   },
   "editor.deps.json": {
-    "file": "assets/editor.deps-DxpY22xl.json",
+    "file": "assets/editor.deps-CsMR_nnH.json",
     "src": "editor.deps.json"
   },
   "resources/css/app.css": {
-    "file": "assets/app-sZ4HfrGk.css",
+    "file": "assets/app-Bck0jPND.css",
     "name": "app",
     "names": [
       "app.css"
@@ -48,8 +48,17 @@
       "assets/cta-mask-DkOSFVpY.svg"
     ]
   },
+  "resources/css/clara.css": {
+    "file": "assets/clara-B6psACgU.css",
+    "name": "clara",
+    "names": [
+      "clara.css"
+    ],
+    "src": "resources/css/clara.css",
+    "isEntry": true
+  },
   "resources/css/editor.css": {
-    "file": "assets/editor-q7gCkKK_.css",
+    "file": "assets/editor-BPr2-bwF.css",
     "name": "editor",
     "names": [
       "editor.css"
@@ -76,6 +85,10 @@
     "file": "assets/btn-arrow-DSZ4x1kn.svg",
     "src": "resources/images/btn-arrow.svg"
   },
+  "resources/images/clara/hero-figure.jpg": {
+    "file": "assets/hero-figure-DmpGrLTt.jpg",
+    "src": "resources/images/clara/hero-figure.jpg"
+  },
   "resources/images/cta-mask.svg": {
     "file": "assets/cta-mask-DkOSFVpY.svg",
     "src": "resources/images/cta-mask.svg"
@@ -85,7 +98,7 @@
     "src": "resources/images/pointer.svg"
   },
   "resources/js/app.js": {
-    "file": "assets/app-Co7tsQ0p.js",
+    "file": "assets/app-BJbjMwDz.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -155,6 +168,15 @@
     "isDynamicEntry": true,
     "imports": [
       "_swiper-BdM3zUQW.js"
+    ]
+  },
+  "resources/js/clara/main.tsx": {
+    "file": "assets/main-DybopF9e.js",
+    "name": "main",
+    "src": "resources/js/clara/main.tsx",
+    "isEntry": true,
+    "assets": [
+      "assets/hero-figure-DmpGrLTt.jpg"
     ]
   },
   "resources/js/editor.js": {

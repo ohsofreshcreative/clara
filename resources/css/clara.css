@@ -1,0 +1,186 @@
+@import 'tailwindcss' source(none);
+
+@source '../js/clara';
+@source '../views/clara';
+
+/*--- TOKENY CLARA (tylko panel /clara, niezależne od design systemu motywu) ---*/
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-ink-950: #050814;
+  --color-ink-900: #0a1022;
+  --color-ink-850: #0e1529;
+  --color-ink-800: #121b34;
+  --color-ink-700: #1c2748;
+  --color-line: #24315a;
+  --color-muted: #a6b2cf;
+  --color-subtle: #8693b3;
+
+  --color-accent-600: #2158e8;
+  --color-accent-500: #2f6bff;
+  --color-accent-400: #4c87ff;
+  --color-accent-300: #93b6ff;
+
+  --shadow-glow: 0 0 0 1px color-mix(in srgb, var(--color-accent-400) 28%, transparent), 0 10px 36px -10px color-mix(in srgb, var(--color-accent-500) 40%, transparent);
+
+  --animate-shimmer: clara-shimmer 3.2s ease-in-out infinite;
+  --animate-float-in: clara-float-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  @keyframes clara-shimmer {
+    0% {
+      background-position: -150% 0;
+    }
+    100% {
+      background-position: 250% 0;
+    }
+  }
+
+  @keyframes clara-float-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.98);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+  }
+}
+
+/*--- SZKŁO: półprzezroczysta powierzchnia z rozmyciem tła (WebGL) i refleksem krawędzi ---*/
+@utility glass {
+  background-color: color-mix(in srgb, var(--color-ink-900) 50%, transparent);
+  border-color: rgb(255 255 255 / 0.06);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 20px 40px -24px rgb(0 0 0 / 0.6);
+}
+
+@utility glass-strong {
+  background-color: color-mix(in srgb, var(--color-ink-900) 62%, transparent);
+  border-color: rgb(255 255 255 / 0.08);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  backdrop-filter: blur(22px) saturate(170%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1), 0 30px 80px -36px color-mix(in srgb, var(--color-accent-500) 45%, transparent), 0 24px 60px -28px rgb(0 0 0 / 0.7);
+}
+
+/* Ładowanie: przesuwający się refleks w kolorze akcentu. */
+@utility shimmer {
+  background-image: linear-gradient(100deg, transparent 25%, color-mix(in srgb, var(--color-accent-400) 8%, transparent) 45%, rgb(255 255 255 / 0.04) 50%, color-mix(in srgb, var(--color-accent-400) 8%, transparent) 55%, transparent 75%);
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+@utility text-glow {
+  text-shadow: 0 0 18px color-mix(in srgb, var(--color-accent-400) 70%, transparent), 0 0 42px color-mix(in srgb, var(--color-accent-500) 40%, transparent);
+}
+
+/*--- WARIANTY AKCENTU (ustawienia użytkownika; biały tekst na 500/600 i 300/400 na tle spełniają WCAG AA) ---*/
+[data-accent='blue'] {
+  --color-accent-600: #2158e8;
+  --color-accent-500: #2f6bff;
+  --color-accent-400: #4c87ff;
+  --color-accent-300: #93b6ff;
+}
+
+[data-accent='violet'] {
+  --color-accent-600: #6a3ad8;
+  --color-accent-500: #7547e8;
+  --color-accent-400: #9a7bff;
+  --color-accent-300: #c3b2ff;
+}
+
+[data-accent='pink'] {
+  --color-accent-600: #c0256f;
+  --color-accent-500: #d02f7c;
+  --color-accent-400: #f06aa8;
+  --color-accent-300: #f8a9cf;
+}
+
+[data-accent='teal'] {
+  --color-accent-600: #0e7a72;
+  --color-accent-500: #0b857c;
+  --color-accent-400: #22b8ab;
+  --color-accent-300: #7fe0d6;
+}
+
+[data-accent='sunset'] {
+  --color-accent-600: #c2410c;
+  --color-accent-500: #c84a12;
+  --color-accent-400: #fb8a4d;
+  --color-accent-300: #fdc29f;
+}
+
+/*--- SKALA UI: cały panel jest w rem, więc wystarczy rozmiar bazowy ---*/
+:root[data-scale='75'] {
+  font-size: 75%;
+}
+
+:root[data-scale='80'] {
+  font-size: 80%;
+}
+
+:root[data-scale='90'] {
+  font-size: 90%;
+}
+
+:root[data-scale='110'] {
+  font-size: 110%;
+}
+
+:root[data-scale='125'] {
+  font-size: 125%;
+}
+
+/*--- SZKŁO WEBGL: załamanie, rant i refleks rysuje shader tła — CSS daje tylko lekkie zmatowienie dla czytelności ---*/
+:root[data-glass='webgl'] .glass {
+  background-color: color-mix(in srgb, var(--color-ink-900) 50%, transparent);
+  border-color: rgb(255 255 255 / 0.05);
+  -webkit-backdrop-filter: blur(6px) saturate(140%);
+  backdrop-filter: blur(6px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+:root[data-glass='webgl'] .glass-strong {
+  background-color: color-mix(in srgb, var(--color-ink-900) 62%, transparent);
+  border-color: rgb(255 255 255 / 0.07);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  backdrop-filter: blur(12px) saturate(150%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.09), 0 30px 80px -36px color-mix(in srgb, var(--color-accent-500) 40%, transparent);
+}
+
+/*--- EFEKTY OGRANICZONE: bez rozmycia i animacji (słabszy sprzęt, preferencja użytkownika) ---*/
+:root[data-effects='reduced'] .glass,
+:root[data-effects='reduced'] .glass-strong {
+  background-color: var(--color-ink-900);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+:root[data-effects='reduced'] .clara-ambient {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer,
+  .animate-float-in {
+    animation: none;
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-ink-950 font-sans text-white antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent-300);
+    outline-offset: 2px;
+  }
+}

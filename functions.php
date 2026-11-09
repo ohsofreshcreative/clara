@@ -34,6 +34,7 @@ require $composer;
 Application::configure()
 	->withProviders([
 		App\Providers\ThemeServiceProvider::class,
+		App\Clara\ClaraServiceProvider::class,
 	])
 	->boot();
 

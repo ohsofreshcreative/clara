@@ -1,0 +1,14 @@
+{
+  "name": "Clara — import Hero",
+  "id": "clara-hero-import-dev",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "devAllowedDomains": ["http://clara.local", "https://clara.local"],
+    "reasoning": "Pobranie paczki layoutu z lokalnej instancji Clara przy użyciu jednorazowego kodu."
+  }
+}

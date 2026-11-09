@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8" />
+<style>
+  :root { color-scheme: light dark; font: 13px/1.45 Inter, system-ui, sans-serif; }
+  body { margin: 0; padding: 16px; background: var(--figma-color-bg, #0b1020); color: var(--figma-color-text, #e8ecff); }
+  h1 { font-size: 15px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: var(--figma-color-text-secondary, #a7b0cf); }
+  fieldset { border: 1px solid var(--figma-color-border, #2a3354); border-radius: 10px; margin: 0 0 12px; padding: 12px; }
+  legend { padding: 0 4px; font-weight: 600; }
+  label { display: block; margin-bottom: 8px; }
+  input[type=text], input[type=url] { box-sizing: border-box; width: 100%; margin-top: 4px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--figma-color-border, #2a3354); background: transparent; color: inherit; }
+  button { padding: 8px 14px; border-radius: 8px; border: 0; background: var(--figma-color-bg-brand, #2f6bff); color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 2px solid #7aa2ff; outline-offset: 2px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #report { margin-top: 12px; white-space: pre-wrap; }
+  .err { color: #ff9b9b; }
+  .ok { color: #8be0b0; }
+  .warn { color: #ffd78a; }
+</style>
+
+<h1>Clara — import Hero</h1>
+<p>Tworzy nowy frame obok istniejących warstw. Teksty są edytowalne, zdjęcia pozostają bitmapami.</p>
+
+<fieldset>
+  <legend>Z pliku</legend>
+  <label>Paczka z Clara (.json)
+    <input id="file" type="file" accept=".json,application/json" />
+  </label>
+</fieldset>
+
+<fieldset>
+  <legend>Kodem jednorazowym</legend>
+  <label>Adres Clara <input id="base" type="url" value="http://clara.local" /></label>
+  <label>Kod (ważny 10 min, jednorazowy) <input id="code" type="text" autocomplete="off" spellcheck="false" /></label>
+</fieldset>
+
+<label class="row"><input id="replace" type="checkbox" /> Zastąp poprzedni import tego layoutu (tylko warstwy utworzone przez Clara)</label>
+<div class="row"><button id="go">Importuj</button></div>
+<div id="report" role="status" aria-live="polite"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const out = $('report');
+  const show = (html) => { out.innerHTML = html; };
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+  $('go').onclick = async () => {
+    const replace = $('replace').checked;
+    const file = $('file').files[0];
+    const code = $('code').value.trim();
+    $('go').disabled = true;
+    show('Wczytywanie…');
+    try {
+      if (file) {
+        if (file.size > 15 * 1024 * 1024) throw new Error('Plik jest większy niż 15 MB.');
+        parent.postMessage({ pluginMessage: { type: 'import', text: await file.text(), replace } }, '*');
+        return;
+      }
+      if (!/^[A-Za-z0-9_-]{43}$/.test(code)) throw new Error('Wybierz plik albo wpisz kod z Clara (43 znaki).');
+      const base = new URL($('base').value);
+      if (!/^https?:$/.test(base.protocol)) throw new Error('Adres Clara musi zaczynać się od http(s)://');
+      // text/plain = brak preflight CORS; kod w treści, nie w adresie (nie trafia do logów).
+      const res = await fetch(new URL('/wp-json/clara/v1/figma/bundle', base), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ token: code }), credentials: 'omit' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message ?? `Clara zwróciła błąd HTTP ${res.status}.`);
+      $('code').value = '';
+      parent.postMessage({ pluginMessage: { type: 'import', bundle: data, replace } }, '*');
+    } catch (e) {
+      show(`<p class="err">${esc(e.message)}</p>`);
+      $('go').disabled = false;
+    }
+  };
+
+  onmessage = (event) => {
+    const msg = event.data.pluginMessage;
+    if (!msg || msg.type !== 'report') return;
+    const r = msg.report;
+    $('go').disabled = false;
+    if (!r.ok) {
+      show(`<p class="err">Import przerwany — nie utworzono warstw:</p><ul class="err">${r.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul>`);
+      return;
+    }
+    const created = Object.entries(r.created).map(([t, n]) => `${t}: ${n}`).join(', ');
+    show([
+      `<p class="ok">Utworzono „${esc(r.frameName)}” (${esc(created)}).</p>`,
+      `<p>Teksty: ${r.texts} · bitmapy: ${r.bitmaps} · Auto Layout: ${r.autoLayoutFrames}${r.replaced ? ` · zastąpiono: ${r.replaced}` : ''}</p>`,
+      r.variables.collection ? `<p>Zmienne „${esc(r.variables.collection)}”: nowe ${r.variables.created}, istniejące ${r.variables.reused}.</p>` : '',
+      r.fontIssues.length ? `<p class="warn">Fonty zastąpione:</p><ul class="warn">${r.fontIssues.map((f) => `<li>${esc(f.requested)} → ${esc(f.used)} (${esc(f.reason)})</li>`).join('')}</ul>` : '',
+      r.warnings.length ? `<ul class="warn">${r.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : '',
+    ].join(''));
+  };
+</script>
