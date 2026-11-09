@@ -111,6 +111,8 @@ session_end
 
 echo '== HTTP: regresja =='
 check 'logowanie WordPress dostępne (200)' "$(code "$URL/wp-login.php")" 200
+grep -q 'clara-login' <(curl -s "$URL/wp-login.php") && r=ok || r=brak
+check 'ekran logowania w stylu Clara (klasa body, postać)' "$r" ok
 check 'indeks REST WordPress (200)' "$(code "$URL/wp-json/")" 200
 
 echo "HTTP: $pass PASS, $fail FAIL"

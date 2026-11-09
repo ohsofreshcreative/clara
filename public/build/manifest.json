@@ -33,7 +33,7 @@
     "src": "editor.deps.json"
   },
   "resources/css/app.css": {
-    "file": "assets/app-Bck0jPND.css",
+    "file": "assets/app-C0U9FWCR.css",
     "name": "app",
     "names": [
       "app.css"
@@ -48,6 +48,18 @@
       "assets/cta-mask-DkOSFVpY.svg"
     ]
   },
+  "resources/css/clara-login.css": {
+    "file": "assets/clara-login-CJ6kTcW_.css",
+    "name": "clara-login",
+    "names": [
+      "clara-login.css"
+    ],
+    "src": "resources/css/clara-login.css",
+    "isEntry": true,
+    "assets": [
+      "assets/hero-figure-DmpGrLTt.jpg"
+    ]
+  },
   "resources/css/clara.css": {
     "file": "assets/clara-B6psACgU.css",
     "name": "clara",
@@ -58,7 +70,7 @@
     "isEntry": true
   },
   "resources/css/editor.css": {
-    "file": "assets/editor-BPr2-bwF.css",
+    "file": "assets/editor-SOec7yyU.css",
     "name": "editor",
     "names": [
       "editor.css"

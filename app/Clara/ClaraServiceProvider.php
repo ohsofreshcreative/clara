@@ -23,6 +23,7 @@ class ClaraServiceProvider extends ServiceProvider
 	public function boot(): void
 	{
 		(new Panel())->register();
+		(new LoginScreen())->register();
 
 		add_action('rest_api_init', function () {
 			(new StatusController())->register();

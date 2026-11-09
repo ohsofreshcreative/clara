@@ -43,6 +43,7 @@ export default defineConfig(({ command, mode }) => {
           'resources/css/editor.css',
           'resources/js/editor.js',
           'resources/css/clara.css',
+          'resources/css/clara-login.css',
           'resources/js/clara/main.tsx',
         ],
         refresh: true,

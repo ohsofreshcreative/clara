@@ -799,6 +799,58 @@ if (env.CLARA_REFERENCE && existsSync(env.CLARA_REFERENCE)) {
   console.log('Porównanie: clara-compare-1440.png (lewo: mockup, prawo: implementacja)');
 }
 
+{
+  // Ekran logowania (bez sesji): wp-login.php w stylu Clara, assety z buildu testowego.
+  console.log('== ekran logowania ==');
+  for (const vp of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    const context = await browser.newContext({ viewport: vp, deviceScaleFactor: 1 });
+    await context.route(`**${BUILD_PATH}**`, (route) => {
+      const file = join(BUILD, new globalThis.URL(route.request().url()).pathname.slice(BUILD_PATH.length));
+      if (!existsSync(file)) return route.fulfill({ status: 404 });
+      return route.fulfill({ body: readFileSync(file), contentType: types[extname(file)] ?? 'application/octet-stream' });
+    });
+    await context.route(/\/wp-login\.php/, async (route) => {
+      if (route.request().resourceType() !== 'document') return route.continue();
+      const response = await route.fetch();
+      const escaped = BUILD_PATH.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+      const own = new RegExp(`<link[^>]+href="[^"]*${escaped}[^"]*"[^>]*>\\s*`, 'g');
+      const css = manifest['resources/css/clara-login.css'];
+      const html = (await response.text()).replace(own, '').replace('</head>', `<link rel="stylesheet" href="${BUILD_PATH}${css.file}">\n</head>`);
+      return route.fulfill({ response, body: html });
+    });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+    const tag = `LOGIN ${vp.width}`;
+    const redirect = await page.request.get(`${URL}/`, { maxRedirects: 0 });
+    check(`${tag}: strona główna bez sesji → przekierowanie do logowania`, redirect.status() === 302 && /wp-login\.php/.test(redirect.headers().location ?? ''), redirect.status());
+    await page.goto(`${URL}/wp-login.php?redirect_to=${encodeURIComponent(`${URL}/`)}`, { waitUntil: 'networkidle' });
+    check(`${tag}: ekran logowania Clara`, (await page.locator('body.clara-login').count()) === 1);
+    check(`${tag}: postać i nagłówek Clara`, (await page.locator('.clara-login-figure').isVisible()) && (await page.getByText('Inspiracje dla Twoich').isVisible()));
+    const figure = await page.locator('.clara-login-figure').evaluate((el) => ({ bg: getComputedStyle(el).backgroundImage, h: el.getBoundingClientRect().height }));
+    check(`${tag}: obraz postaci załadowany`, /hero-figure/.test(figure.bg) && figure.h > 100, JSON.stringify(figure));
+    check(`${tag}: formularz logowania (login, hasło, przycisk)`, (await page.getByLabel(/Nazwa użytkownika|adres e-mail|Username/i).isVisible()) && (await page.locator('#user_pass').isVisible()) && (await page.getByRole('button', { name: /Zaloguj|Log In/ }).isVisible()));
+    check(`${tag}: stary nagłówek WP ukryty wizualnie, dostępny dla czytników`, (await page.getByRole('heading', { level: 1 }).count()) >= 1);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    check(`${tag}: brak poziomego overflow`, overflow <= 0, `${overflow}px`);
+    const audit = await page.evaluate(contrastAudit);
+    check(`${tag}: kontrast WCAG AA (${audit.checked} elementów)`, audit.issues.length === 0, audit.issues.join('; '));
+    await page.locator('#user_pass').focus();
+    const ring = await page.locator('#user_pass').evaluate((el) => getComputedStyle(el).boxShadow);
+    check(`${tag}: widoczny focus pola`, ring !== 'none', ring);
+    await page.screenshot({ path: join(OUT, `clara-login-${vp.width}.png`) });
+    await page.locator('#user_login').fill('clara-e2e-nie-istnieje');
+    await page.locator('#user_pass').fill('zle-haslo-e2e');
+    await page.getByRole('button', { name: /Zaloguj|Log In/ }).click();
+    await page.waitForLoadState('networkidle');
+    const errorBox = await page.locator('#login_error').evaluate((el) => getComputedStyle(el).borderLeftColor).catch(() => null);
+    check(`${tag}: błąd logowania czytelny w stylu Clara`, errorBox === 'rgb(248, 113, 113)' && (await page.locator('body.clara-login').count()) === 1, errorBox);
+    check(`${tag}: brak błędów JS`, errors.length === 0, errors.join(' | '));
+    await context.close();
+  }
+}
+
 await browser.close();
 console.log(`UI: ${pass} PASS, ${fail} FAIL`);
 process.exit(fail ? 1 : 0);
