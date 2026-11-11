@@ -456,7 +456,10 @@ function uploadFile<T>(route: string, file: File): Promise<T> {
 
 export function errorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
-    return String((error as ApiError).message);
+    const { code, message } = error as ApiError;
+    // Błąd krytyczny PHP: WordPress zwraca HTML w treści komunikatu — pokazujemy czytelny tekst.
+    if (code === 'internal_server_error') return 'Błąd serwera (błąd krytyczny PHP). Szczegóły są w logu błędów PHP na serwerze.';
+    return String(message).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   return 'Nieznany błąd.';

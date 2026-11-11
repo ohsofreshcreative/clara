@@ -1,5 +1,5 @@
 [
-  "wp-element",
   "wp-dom-ready",
+  "wp-element",
   "wp-api-fetch"
 ]

@@ -79,6 +79,9 @@ class GenerateController extends Controller
 		if (function_exists('set_time_limit')) {
 			@set_time_limit(300);
 		}
+		// Zmniejszanie screenów referencyjnych (GD/Imagick) i dekodowanie obrazu z API potrzebują pamięci
+		// jak przy obróbce obrazów w WP — domyślny limit dla żądań REST (WP_MEMORY_LIMIT) bywa za mały.
+		wp_raise_memory_limit('image');
 
 		$result = InspirationGenerator::render((int) $request['id'], get_current_user_id());
 
