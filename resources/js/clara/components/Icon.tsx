@@ -18,6 +18,9 @@ const paths = {
   tag: 'M3 12V4h8l10 10-8 8zM7.5 7.5h.01',
   menu: 'M4 7h16M4 12h16M4 17h16',
   close: 'M6 6l12 12M18 6 6 18',
+  chevron: 'M6 9l6 6 6-6',
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
 } as const;
 
 export type IconName = keyof typeof paths;

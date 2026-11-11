@@ -151,7 +151,8 @@ for (const vp of [
   check('brak poziomego overflow', overflow <= 0, `${overflow}px`);
 
   const navLinks = page.locator('#clara-nav a');
-  check('sidebar: 5 pozycji nawigacji', (await navLinks.count()) === 5);
+  check('sidebar: wybór projektu na górze, Dashboard i Ustawienia (bez Projekty/Kolekcje/Biblioteka)', (await page.getByTestId('project-picker').count()) === 1 && (await navLinks.allInnerTexts()).map((t) => t.trim()).join('|') === 'Dashboard|Ustawienia');
+  check('sidebar: postać w lustrzanym odbiciu (dekoracja)', vp.width < 1024 || (await page.locator('#clara-nav [aria-hidden="true"] img').evaluate((img) => (getComputedStyle(img).scale.startsWith('-1') || getComputedStyle(img).transform.startsWith('matrix(-1')) && img.alt === '')));
   if (vp.width >= 1024) check('sidebar widoczny na desktopie', await navLinks.first().isVisible());
   check('tryby Generuj inspiracje / Szukaj zdjęć', (await page.getByRole('radio').count()) === 2);
   check('composer bez nieaktywnych przycisków „wkrótce”', !(await page.locator('form button[disabled]').count()));
@@ -331,7 +332,8 @@ for (const vp of [
 
   // Routing klienta.
   if (vp.width < 1024) await page.getByRole('button', { name: /Otwórz menu/ }).click();
-  await page.getByRole('link', { name: 'Projekty' }).click();
+  await page.getByTestId('project-picker').getByRole('button', { expanded: false }).click();
+  await page.getByRole('button', { name: 'Zarządzaj projektami' }).click();
   check('routing: /projects', new globalThis.URL(page.url()).pathname === '/projects' && (await page.getByRole('heading', { level: 1, name: 'Projekty' }).isVisible()));
   await page.goBack();
   check('routing: powrót do dashboardu', await heading.isVisible());
@@ -442,8 +444,13 @@ for (const vp of [
   const projectMenu = page.getByRole('list', { name: 'Menu projektu' });
   check('sidebar: menu projektu po wejściu w projekt', (await projectMenu.getByRole('link').allInnerTexts()).map((t) => t.trim()).join('|') === 'Przegląd|Styl|Generowanie');
   const dsId = dsProjectUrl.match(/\/projects\/(\d+)/)[1];
-  await page.locator(`#clara-active-project option[value="${dsId}"]`).waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
-  check('sidebar: wybrany projekt w selektorze', (await page.locator('#clara-active-project').inputValue()) === dsId);
+  const dsName = await page.getByRole('heading', { level: 1 }).innerText();
+  await page.getByTestId('project-picker-name').filter({ hasText: dsName.trim() }).waitFor({ timeout: 5000 }).catch(() => {});
+  check('sidebar: wybrany projekt w selektorze', (await page.getByTestId('project-picker-name').innerText()).trim() === dsName.trim(), [dsId, dsName].join(' '));
+  await page.getByTestId('project-picker').getByRole('button', { expanded: false }).click();
+  check('wybór projektu: lista z zaznaczonym projektem i „Zarządzaj projektami”', (await page.locator('#clara-project-list [aria-current="true"]').innerText()).trim() === dsName.trim() && (await page.getByRole('button', { name: 'Zarządzaj projektami' }).isVisible()));
+  await page.keyboard.press('Escape');
+  check('wybór projektu: Escape zamyka listę', (await page.locator('#clara-project-list').count()) === 0);
   check('przegląd projektu bez panelu stylu (link do zakładki)', (await page.getByRole('heading', { name: 'Styl projektu' }).count()) === 0 && (await seen(page.getByText('Przejdź do stylu'))));
   await projectMenu.getByRole('link', { name: 'Styl' }).click();
   await page.waitForURL(/\/projects\/\d+\/style$/);

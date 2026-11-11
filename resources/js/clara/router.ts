@@ -6,7 +6,7 @@ export interface Route {
 }
 
 export const routes: Route[] = [
-  { path: '', label: 'Nowe inspiracje' },
+  { path: '', label: 'Dashboard' },
   { path: 'projects', label: 'Projekty' },
   { path: 'collections', label: 'Kolekcje' },
   { path: 'library', label: 'Biblioteka' },
