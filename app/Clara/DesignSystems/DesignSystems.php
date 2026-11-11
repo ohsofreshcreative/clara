@@ -10,7 +10,7 @@ use App\Clara\Database\Schema;
  */
 class DesignSystems
 {
-	public const SOURCES = ['manual', 'json_import', 'figma_rest', 'reference_screens', 'restore'];
+	public const SOURCES = ['manual', 'json_import', 'figma_rest', 'figma_colors', 'reference_screens', 'restore'];
 
 	public static function find(int $id): ?array
 	{

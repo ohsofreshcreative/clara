@@ -13,13 +13,17 @@ import Projects from './pages/Projects';
 function Page() {
   const { route, params } = useLocation();
 
-  if (!route || params.length > 1) return <Placeholder title="Nie znaleziono strony" />;
+  if (!route || params.length > (route.path === 'projects' ? 2 : 1)) return <Placeholder title="Nie znaleziono strony" />;
   if (route.path === '') return params.length ? <Placeholder title="Nie znaleziono strony" /> : <Dashboard />;
 
   if (route.path === 'projects') {
     if (!params.length) return <Projects />;
     const id = Number(params[0]);
-    return Number.isInteger(id) && id > 0 ? <ProjectDetail key={id} id={id} /> : <Placeholder title="Nie znaleziono strony" />;
+    const tab = params[1] ?? '';
+    if (!Number.isInteger(id) || id <= 0) return <Placeholder title="Nie znaleziono strony" />;
+    if (tab === 'generate') return <Dashboard key={`gen-${id}`} projectId={id} />;
+    if (tab === '' || tab === 'style') return <ProjectDetail key={`${id}-${tab}`} id={id} tab={tab} />;
+    return <Placeholder title="Nie znaleziono strony" />;
   }
 
   if (route.path === 'settings') return params.length ? <Placeholder title="Nie znaleziono strony" /> : <Settings />;
@@ -30,7 +34,7 @@ function Page() {
 }
 
 export default function App() {
-  const { route } = useLocation();
+  const { route, params } = useLocation();
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,7 +56,7 @@ export default function App() {
         Przejdź do treści
       </a>
 
-      <Sidebar current={route} userName={window.claraConfig.userName} />
+      <Sidebar current={route} params={params} userName={window.claraConfig.userName} />
 
       <main id="clara-main" tabIndex={-1} className="min-w-0 flex-1 focus:outline-none lg:h-screen lg:overflow-y-auto">
         {notice && (

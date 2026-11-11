@@ -10,11 +10,12 @@ import QuickStarts, { type QuickStart } from '../components/QuickStarts';
 import RecentInspirations from '../components/RecentInspirations';
 import SearchResults from '../components/SearchResults';
 
-export default function Dashboard() {
+/** Bez `projectId` — dashboard (projekt do wyboru); z `projectId` — zakładka „Generowanie” projektu. */
+export default function Dashboard({ projectId: fixedProject }: { projectId?: number } = {}) {
   const [prompt, setPrompt] = useState('');
   const [query, setQuery] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState(0);
+  const [projectId, setProjectId] = useState(fixedProject ?? 0);
   const [keepDirection, setKeepDirection] = useState(true);
   // Kolejne rundy „Generuj jeszcze” dokładane pod spodem; ostatnia wyznacza projekt, sekcję i prompt.
   const [runs, setRuns] = useState<{ result: InspirationResult; prompt: string; startedAt: number }[]>([]);
@@ -121,15 +122,23 @@ export default function Dashboard() {
   return (
     <div className="relative isolate overflow-hidden">
       {/* Akcent tożsamości: dekoracyjny, za treścią, wygaszony maską żeby nie zasłaniał UI. */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 sm:h-80 lg:left-auto lg:right-[3%] lg:aspect-[706/312] lg:h-auto lg:w-[52%] lg:max-w-[780px]">
+      {!fixedProject && <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 sm:h-80 lg:left-auto lg:right-[3%] lg:aspect-[706/312] lg:h-auto lg:w-[52%] lg:max-w-[780px]">
         <img
           src={heroFigure}
           alt=""
           className="size-full object-cover object-[70%_top] opacity-60 [mask-image:linear-gradient(to_bottom,black_55%,transparent)] lg:object-center lg:opacity-100 lg:[mask-image:linear-gradient(to_right,transparent,black_28%,black_92%,transparent),linear-gradient(to_bottom,black_72%,transparent)] lg:[mask-composite:intersect]"
         />
-      </div>
+      </div>}
 
-      <div className="mx-auto flex max-w-[1240px] flex-col gap-8 px-4 pt-40 pb-12 sm:px-8 sm:pt-52 lg:gap-12 lg:px-12 lg:pt-16">
+      <div className={`mx-auto flex max-w-[1240px] flex-col gap-8 px-4 pb-12 sm:px-8 lg:gap-12 lg:px-12 ${fixedProject ? 'pt-10' : 'pt-40 sm:pt-52 lg:pt-16'}`}>
+        {fixedProject ? (
+          <div className="max-w-xl">
+            <h1 className="break-words text-3xl font-semibold tracking-tight sm:text-4xl">
+              {project?.name ?? 'Projekt'} <span className="text-muted">· Generowanie</span>
+            </h1>
+            <p className="mt-3 text-muted">Opisz sekcję po polsku — inspiracje powstają w stylu tego projektu (kolory, typografia i screeny referencyjne z zakładki Styl).</p>
+          </div>
+        ) : (
         <div className="max-w-xl">
           <p className="text-sm font-semibold tracking-[0.35em] text-accent-400">CLARA</p>
           <h1 className="mt-3 max-w-lg text-4xl font-semibold leading-tight tracking-tight sm:text-5xl lg:text-[4rem] lg:leading-[1.05]">
@@ -139,10 +148,11 @@ export default function Dashboard() {
             Opisz sekcję po polsku — Clara wygeneruje 4 obrazy-inspiracje w różnych kompozycjach, gotowe do remiksu i eksportu do Figmy.
           </p>
         </div>
+        )}
 
         <div className="flex flex-col gap-4 lg:-mt-2" ref={composerRef}>
           <Composer prompt={prompt} onPromptChange={setPrompt} onGenerate={onGenerate} onSearch={onSearch} busy={busy} />
-          <Filters projects={projects} project={projectId} onProjectChange={setProjectId} />
+          {!fixedProject && <Filters projects={projects} project={projectId} onProjectChange={setProjectId} />}
           {direction && <DirectionToggle direction={direction} checked={keepDirection} onChange={setKeepDirection} />}
         </div>
 

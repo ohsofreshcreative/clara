@@ -143,7 +143,7 @@ try {
 	$check('„trzymaj się kierunku” bez kierunku → 409 z instrukcją', $code === 409 && ($noDir['code'] ?? '') === 'clara_direction_missing', [$code, $noDir['code'] ?? null]);
 	$dirId = (int) $items[1]['id'];
 	[$code, $dir] = $req('PUT', "/projects/{$pid}/direction", $a, ['generationId' => $dirId]);
-	$check('obranie kierunku zapisuje wariant, tytuł i obraz', $code === 200 && $dir['direction']['generationId'] === $dirId && $dir['direction']['layout'] === 'full-bleed' && str_contains($dir['direction']['imageUrl'], '.jpg') && (Projects::find($pid)['brief']['direction']['generationId'] ?? 0) === $dirId, [$code, $dir]);
+	$check('obranie kierunku zapisuje wariant, tytuł i obraz', $code === 200 && $dir['direction']['generationId'] === $dirId && $dir['direction']['title'] === 'Propozycja 2' && str_contains($dir['direction']['imageUrl'], '.jpg') && (Projects::find($pid)['brief']['direction']['generationId'] ?? 0) === $dirId, [$code, $dir]);
 	[$code] = $req('PUT', "/projects/{$pid}/direction", $b, ['generationId' => $dirId]);
 	[$code2] = $req('PUT', "/projects/{$pid}/direction", $a, ['generationId' => 999999999]);
 	$check('kierunek: cudzy projekt 404, obcy wariant 404', $code === 404 && $code2 === 404, [$code, $code2]);

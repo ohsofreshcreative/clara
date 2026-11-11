@@ -6,6 +6,7 @@ import {
   getFigmaStatus,
   getLatestDesignSystem,
   importDesignSystem,
+  importFigmaColors,
   ingestFigma,
   listDesignSystemVersions,
   removeScreen,
@@ -39,12 +40,16 @@ const columns: Record<Group, { key: string; label: string; type: 'text' | 'numbe
 
 const groupLabels: Record<Group, string> = { colors: 'Kolory', typography: 'Typografia', spacing: 'Odstępy', radii: 'Zaokrąglenia', shadows: 'Cienie' };
 
+/** W UI tylko kolory i typografia; pozostałe grupy zostają w danych (zapis ich nie gubi). */
+const visibleGroups: Group[] = ['colors', 'typography'];
+
 const emptyRow = (group: Group): Row => Object.fromEntries(columns[group].map((c) => [c.key, c.key === 'fontWeight' ? 400 : '']));
 
 export const sourceLabels: Record<DesignSystemSource['type'], string> = {
   manual: 'Ręcznie',
   json_import: 'Import JSON',
   figma_rest: 'Figma (style REST)',
+  figma_colors: 'Figma (kolory z ramki)',
   reference_screens: 'Screeny referencyjne',
   restore: 'Przywrócenie',
 };
@@ -63,7 +68,8 @@ function toPayload(draft: Record<Group, Row[]>): Tokens {
   return out as unknown as Tokens;
 }
 
-export default function DesignSystemPanel({ projectId, hasFigmaUrl }: { projectId: number; hasFigmaUrl: boolean }) {
+export default function DesignSystemPanel({ projectId, hasFigmaUrl, colorsUrl = '', onColorsUrl }: { projectId: number; hasFigmaUrl: boolean; colorsUrl?: string; onColorsUrl?: (url: string) => void }) {
+  const [colorsLink, setColorsLink] = useState(colorsUrl);
   const [current, setCurrent] = useState<DesignSystem | null>(null);
   const [draft, setDraft] = useState<Record<Group, Row[]>>(emptyTokens() as unknown as Record<Group, Row[]>);
   const [versions, setVersions] = useState<DesignSystemVersion[]>([]);
@@ -127,17 +133,44 @@ export default function DesignSystemPanel({ projectId, hasFigmaUrl }: { projectI
   return (
     <section aria-labelledby="clara-ds-title" className="flex flex-col gap-6 glass rounded-3xl border p-5 sm:p-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
-        <h2 id="clara-ds-title" className="text-xl font-semibold">Design system</h2>
+        <h2 id="clara-ds-title" className="text-xl font-semibold">Styl projektu</h2>
         <p className="text-sm text-muted" data-testid="ds-current">
           {current ? `Wersja v${current.version} · ${sourceLabels[current.source.type]} · ${new Date(current.created_at).toLocaleString('pl-PL')}` : 'Brak wersji — dodaj tokeny ręcznie, zaimportuj JSON lub pobierz style z Figmy.'}
         </p>
       </div>
 
+      <div className="flex flex-col gap-3 rounded-2xl border border-line p-4" data-testid="ds-colors-link">
+        <label htmlFor="ds-colors-url" className="font-semibold">Kolory z Figmy</label>
+        <p className="text-sm text-muted">Wklej link do ramki z paletą (PPM na ramce → Copy link). Clara pobierze kolory primary, secondary i — jeśli jest — third, bez odcieni.</p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            id="ds-colors-url"
+            type="url"
+            value={colorsLink}
+            onChange={(e) => setColorsLink(e.target.value)}
+            placeholder="https://www.figma.com/design/…?node-id=…"
+            aria-invalid={Boolean(errors.url)}
+            className="w-full min-w-0 flex-1 rounded-xl border border-line bg-ink-850 px-4 py-2.5 text-white placeholder:text-subtle aria-[invalid=true]:border-red-400"
+          />
+          <Button
+            disabled={busy || !figmaReady || !colorsLink.trim()}
+            onClick={() => run(() => importFigmaColors(projectId, colorsLink.trim()), (ds) => {
+              onColorsUrl?.(colorsLink.trim());
+              return `Pobrano kolory: ${ds.tokens.colors.map((c) => c.name).join(', ')} — v${ds.version}.`;
+            })}
+          >
+            Pobierz kolory
+          </Button>
+        </div>
+        {errors.url && <p className="text-sm text-red-300">{errors.url}</p>}
+        {!figmaReady && <p className="text-sm text-subtle">Figma REST nie jest skonfigurowana na serwerze (brak tokenu Figmy).</p>}
+      </div>
+
       <div className="flex flex-col gap-3 rounded-2xl border border-line p-4">
-        <h3 className="font-semibold">Źródła</h3>
+        <h3 className="font-semibold">Inne źródła</h3>
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="ghost" disabled={busy || !figmaReady || !hasFigmaUrl} onClick={() => run(() => ingestFigma(projectId), (ds) => `Pobrano style z Figmy — v${ds.version}.`)}>
-            Pobierz style z Figmy
+            Pobierz typografię i frame’y z Figmy
           </Button>
           <label htmlFor="ds-import" className="inline-flex cursor-pointer items-center rounded-xl border border-line px-5 py-2.5 text-muted hover:border-accent-500 hover:text-white has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent-300">
             Importuj JSON
@@ -149,7 +182,7 @@ export default function DesignSystemPanel({ projectId, hasFigmaUrl }: { projectI
             ? 'Figma REST nie jest skonfigurowana na serwerze (brak tokenu). '
             : !hasFigmaUrl
               ? 'Uzupełnij link do pliku Figma w danych projektu. '
-              : 'Figma REST pobiera style kolorów, tekstu i cieni. '}
+              : 'Pobiera style tekstu i podglądy głównych frame’ów z pliku projektu (kolory pobrane z ramki zostają). '}
           Zmienne Figmy przez REST wymagają planu Enterprise — wyeksportuj je jako JSON (W3C Design Tokens) i zaimportuj.
         </p>
       </div>
@@ -165,7 +198,7 @@ export default function DesignSystemPanel({ projectId, hasFigmaUrl }: { projectI
         </div>
       )}
 
-      {(Object.keys(columns) as Group[]).map((group) => (
+      {visibleGroups.map((group) => (
         <fieldset key={group} className="flex flex-col gap-2">
           <legend className="mb-2 font-semibold">{groupLabels[group]} <span className="text-sm text-subtle">({draft[group].length})</span></legend>
           {draft[group].map((row, i) => (

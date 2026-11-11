@@ -150,9 +150,6 @@ class InspirationGenerator
 		$now = current_time('mysql', true);
 		foreach (self::round($round, (bool) $reference) as $key => $direction) {
 			$layout = $reference ? ($reference['layout'] ?: 'free') : 'free';
-			if ($round > 0) {
-				$direction['prompt'] .= '. This is an additional proposal (round ' . ($round + 1) . '): make it clearly different from earlier proposals — fresh imagery, different color emphasis and arrangement';
-			}
 			$meta = [
 				'batchId' => $batchId,
 				'directionKey' => $key,
@@ -170,6 +167,10 @@ class InspirationGenerator
 				'reference' => $reference ? $reference['generationId'] : null,
 				'quality' => self::DRAFT_QUALITY,
 			];
+			// Prośba o odmienność dopisana na końcu — działa też, gdy styl wyznaczają screeny projektu.
+			if ($round > 0) {
+				$meta['prompt'] .= "\nThis is an additional proposal (round " . ($round + 1) . '): make it clearly different from earlier proposals — fresh imagery, different arrangement and emphasis.';
+			}
 			self::insert($provider, $sectionId, $key, $direction['title'], $layout, $meta, $now);
 		}
 

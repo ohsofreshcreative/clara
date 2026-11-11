@@ -155,13 +155,13 @@ for (const vp of [
   if (vp.width >= 1024) check('sidebar widoczny na desktopie', await navLinks.first().isVisible());
   check('tryby Generuj inspiracje / Szukaj zdjęć', (await page.getByRole('radio').count()) === 2);
   check('composer bez nieaktywnych przycisków „wkrótce”', !(await page.locator('form button[disabled]').count()));
-  check('filtry projekt/design system/klient', (await page.getByRole('combobox').count()) === 3);
+  check('filtry projekt/design system/klient', (await page.locator('main').getByRole('combobox').count()) === 3);
   check('4 szybkie starty', (await page.getByRole('button', { name: /Sekcja hero|O nas|Usługi|Cennik/ }).count()) === 4);
   check('brak fikcyjnych danych z mockupu', !(await page.getByText(/Plan Pro|1 240|2 000 generacji/).count()));
 
   // Postać hero jest dekoracją: nie może przechwytywać kliknięć w kontrolki ani nagłówek.
   const covered = await page.evaluate(() => {
-    const targets = ['h1', '#clara-prompt', 'form button[type="submit"]', 'select'];
+    const targets = ['h1', '#clara-prompt', 'form button[type="submit"]', 'main select'];
     return targets.filter((sel) => {
       const el = document.querySelector(sel);
       el.scrollIntoView({ block: 'center' });
@@ -404,7 +404,8 @@ for (const vp of [
   await page.getByRole('button', { name: 'Usuń projekt' }).click();
   await page.waitForURL(/\/projects$/);
   await page.waitForLoadState('networkidle');
-  check('usunięcie projektu', !(await page.getByText(name).count()));
+  const leftovers = await page.getByText(name).evaluateAll((els) => els.map((el) => `${el.tagName}#${el.id}.${el.className}`.slice(0, 80)));
+  check('usunięcie projektu', leftovers.length === 0, leftovers.join(' | '));
   await page.goto(projectUrl, { waitUntil: 'networkidle' });
   const gone = await seen(page.getByRole('alert').filter({ hasText: 'Nie znaleziono' }));
   check('usunięty projekt: czytelne „Nie znaleziono”', gone);
@@ -435,10 +436,24 @@ for (const vp of [
   await page.locator('#project-figma').fill('https://www.figma.com/design/AbCdEf1234567890XyZ/DS');
   await page.getByRole('button', { name: 'Utwórz projekt' }).click();
   await page.waitForURL(/\/projects\/\d+$/);
+  const dsProjectUrl = page.url();
 
-  const panel = page.locator('section', { has: page.getByRole('heading', { name: 'Design system' }) });
+  // Sidebar: wybrany projekt + menu projektu (Przegląd, Styl, Generowanie).
+  const projectMenu = page.getByRole('list', { name: 'Menu projektu' });
+  check('sidebar: menu projektu po wejściu w projekt', (await projectMenu.getByRole('link').allInnerTexts()).map((t) => t.trim()).join('|') === 'Przegląd|Styl|Generowanie');
+  const dsId = dsProjectUrl.match(/\/projects\/(\d+)/)[1];
+  await page.locator(`#clara-active-project option[value="${dsId}"]`).waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
+  check('sidebar: wybrany projekt w selektorze', (await page.locator('#clara-active-project').inputValue()) === dsId);
+  check('przegląd projektu bez panelu stylu (link do zakładki)', (await page.getByRole('heading', { name: 'Styl projektu' }).count()) === 0 && (await seen(page.getByText('Przejdź do stylu'))));
+  await projectMenu.getByRole('link', { name: 'Styl' }).click();
+  await page.waitForURL(/\/projects\/\d+\/style$/);
+  check('menu projektu → Styl (aktywny link)', (await projectMenu.getByRole('link', { name: 'Styl' }).getAttribute('aria-current')) === 'page');
+
+  const panel = page.locator('section', { has: page.getByRole('heading', { name: 'Styl projektu' }) });
   check('DS: stan pusty', await seen(panel.getByText('Brak wersji')));
-  check('DS: Figma wyłączona bez tokenu + informacja o Enterprise', (await panel.getByRole('button', { name: 'Pobierz style z Figmy' }).isDisabled()) && (await seen(panel.getByText(/Enterprise/))));
+  check('Styl: tylko kolory i typografia (bez cieni, odstępów, zaokrągleń)', (await panel.locator('fieldset legend').allInnerTexts()).map((t) => t.replace(/\s*\(\d+\)/, '').trim()).join('|') === 'Kolory|Typografia');
+  check('Styl: pole linku do kolorów z Figmy', (await panel.getByLabel('Kolory z Figmy').count()) === 1 && (await panel.getByRole('button', { name: 'Pobierz kolory' }).isDisabled()));
+  check('DS: Figma wyłączona bez tokenu + informacja o Enterprise', (await panel.getByRole('button', { name: 'Pobierz typografię i frame’y z Figmy' }).isDisabled()) && (await seen(panel.getByText(/Enterprise/))));
 
   await panel.getByRole('button', { name: '+ Dodaj: kolory' }).click();
   await panel.getByLabel('Kolory 1: Nazwa').fill('Primary');
@@ -472,6 +487,10 @@ for (const vp of [
 
   check('odpowiedzi REST bez tokenów Figmy', !responses.some((body) => SECRET.test(body)));
 
+  await projectMenu.getByRole('link', { name: 'Generowanie' }).click();
+  await page.waitForURL(/\/projects\/\d+\/generate$/);
+  check('menu projektu → Generowanie: composer w kontekście projektu', (await seen(page.getByRole('heading', { name: /· Generowanie/ }))) && (await page.getByRole('textbox').count()) > 0);
+  await page.goto(dsProjectUrl, { waitUntil: 'networkidle' });
   await page.getByRole('button', { name: 'Usuń projekt' }).click();
   await page.waitForURL(/\/projects$/);
   check('DS: brak błędów JS (poza oczekiwanymi 4xx)', errors.filter((e) => !/status of (400|404|409|415)/.test(e)).length === 0, errors.join(' | '));

@@ -242,6 +242,31 @@ try {
 	$check('Figma: ponowny import zastępuje podglądy frame’ów (bez duplikatów)', $code === 201 && count(array_filter($again['assets'], fn ($x) => ($x['role'] ?? '') === 'figma_frame')) === 2, $code);
 	remove_filter('pre_http_request', $s3, 5);
 
+	// Kolory z linku do ramki palety: primary / secondary / third z wypełnień, odcienie pominięte.
+	delete_transient("clara_figma_{$pid}");
+	$swatch = fn ($name, $label, $rgb) => ['type' => 'FRAME', 'name' => $name, 'fills' => [['type' => 'SOLID', 'color' => $rgb + ['a' => 1]]], 'children' => [['type' => 'TEXT', 'name' => $label, 'characters' => $label]]];
+	$figmaCalls = [];
+	$figmaMock = fn ($url) => $json(200, ['name' => 'H2Otwock', 'nodes' => ['17304:77' => ['document' => ['name' => '02. Colors', 'type' => 'SECTION', 'children' => [
+		['type' => 'FRAME', 'name' => 'primary', 'children' => [['type' => 'TEXT', 'name' => 'Header', 'characters' => '#00A64D'], $swatch('Primary', 'primary', ['r' => 0.102, 'g' => 0.224, 'b' => 0.333])]],
+		['type' => 'FRAME', 'name' => 'secondary', 'children' => [$swatch('Secondary', 'secondary', ['r' => 0.286, 'g' => 0.176, 'b' => 0.157])]],
+		['type' => 'FRAME', 'name' => 'shades', 'children' => [$swatch('Shades', 'third', ['r' => 0.733, 'g' => 0.839, 'b' => 0.953])]],
+		['type' => 'FRAME', 'name' => 'shades', 'children' => [$swatch('Shades', 'shades', ['r' => 0, 'g' => 0, 'b' => 0])]],
+		['type' => 'FRAME', 'name' => 'D1D7DD/10%', 'fills' => [['type' => 'SOLID', 'color' => ['r' => 0.8, 'g' => 0.9, 'b' => 1, 'a' => 1]]], 'children' => [['type' => 'TEXT', 'characters' => '#CFE6FE']]],
+	]]]]]);
+	$colorsUrl = 'https://www.figma.com/design/AbCdEf1234567890XyZ/H2Otwock?node-id=17304-77&t=abc';
+	[$code, $colored] = $req('POST', "{$base}/colors", $a, ['url' => $colorsUrl]);
+	$check('kolory z Figmy: Primary, Secondary, Third bez odcieni', $code === 201 && $colored['tokens']['colors'] === [['name' => 'Primary', 'value' => '#1a3955'], ['name' => 'Secondary', 'value' => '#492d28'], ['name' => 'Third', 'value' => '#bbd6f3']] && $colored['source']['type'] === 'figma_colors', [$code, $colored['tokens']['colors'] ?? $colored]);
+	$check('kolory z Figmy: zapytanie o węzeł z linku (17304:77), typografia i screeny zachowane', str_contains($figmaCalls[0]['url'] ?? '', 'nodes?ids=17304%3A77') && count($colored['assets']) === count($again['assets']) && $colored['tokens']['typography'] === $again['tokens']['typography'], array_column($figmaCalls, 'url'));
+	$check('kolory z Figmy: link zapisany w projekcie', (Projects::find($pid)['brief']['colorsUrl'] ?? '') === $colorsUrl);
+	[$code] = $req('POST', "{$base}/colors", $a, ['url' => 'https://www.figma.com/design/AbCdEf1234567890XyZ/H2Otwock']);
+	[$code2] = $req('POST', "{$base}/colors", $a, ['url' => 'https://evil.example/design/AbCdEf1234567890XyZ/x?node-id=1-2']);
+	[$code3] = $req('POST', "{$base}/colors", $b, ['url' => $colorsUrl]);
+	$check('kolory z Figmy: link bez node-id / obca domena → 400, cudzy projekt → 404', $code === 400 && $code2 === 400 && in_array($code3, [403, 404], true), [$code, $code2, $code3]);
+	delete_transient("clara_figma_{$pid}");
+	$figmaMock = fn ($url) => $json(200, ['nodes' => ['17304:77' => ['document' => ['name' => 'X', 'children' => [$swatch('Akcent', 'accent', ['r' => 1, 'g' => 0, 'b' => 0])]]]]]);
+	[$code, $none] = $req('POST', "{$base}/colors", $a, ['url' => $colorsUrl]);
+	$check('kolory z Figmy: brak „primary” → 422 z instrukcją', $code === 422 && str_contains($none['message'] ?? '', 'primary'), [$code, $none['message'] ?? null]);
+
 	$errorsByStatus = [
 		[fn () => $json(403, ['status' => 403, 'err' => 'Invalid token ' . FAKE_TOKEN]), 502, 'nie ma dostępu'],
 		[fn () => $json(404, ['status' => 404]), 502, 'Nie znaleziono pliku'],

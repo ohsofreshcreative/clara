@@ -45,6 +45,80 @@ class FigmaClient
 		return preg_match('#^/(?:design|file|proto|board)/([A-Za-z0-9]{10,64})#', $path, $m) ? $m[1] : null;
 	}
 
+	/** `node-id=17304-77` z linku Figmy → `17304:77`. */
+	public static function nodeId(string $url): ?string
+	{
+		parse_str((string) wp_parse_url($url, PHP_URL_QUERY), $query);
+		$id = str_replace('-', ':', (string) ($query['node-id'] ?? ''));
+
+		return preg_match('/^\d+:\d+$/', $id) ? $id : null;
+	}
+
+	/** Role kolorów rozpoznawane po podpisie lub nazwie warstwy (odcienie / „shades” pomijamy). */
+	public const COLOR_ROLES = ['primary' => 'Primary', 'secondary' => 'Secondary', 'third' => 'Third', 'tertiary' => 'Third'];
+
+	/**
+	 * Kolory primary / secondary / third z ramki palety: warstwa z jednolitym wypełnieniem, której nazwa
+	 * albo bezpośredni podpis tekstowy to rola (np. prostokąt „Primary” z napisem „primary”).
+	 *
+	 * @return array{colors: array<int, array{name: string, value: string}>, meta: array}|WP_Error
+	 */
+	public static function colors(string $fileKey, string $nodeId): array|WP_Error
+	{
+		$data = self::get('files/' . rawurlencode($fileKey) . '/nodes?ids=' . rawurlencode($nodeId));
+		if (is_wp_error($data)) {
+			return $data;
+		}
+		$root = $data['nodes'][$nodeId]['document'] ?? null;
+		if (! is_array($root)) {
+			return new WP_Error('clara_figma_node', __('Nie znaleziono wskazanej ramki w pliku Figma — sprawdź link (node-id).', 'clara'), ['status' => 404]);
+		}
+
+		$found = [];
+		self::collectColors($root, $found);
+		$colors = [];
+		foreach (array_unique(array_values(self::COLOR_ROLES)) as $role) {
+			if (isset($found[$role])) {
+				$colors[] = ['name' => $role, 'value' => $found[$role]];
+			}
+		}
+
+		return [
+			'colors' => $colors,
+			'meta' => ['fileKey' => $fileKey, 'nodeId' => $nodeId, 'nodeName' => sanitize_text_field((string) ($root['name'] ?? '')), 'fileName' => sanitize_text_field((string) ($data['name'] ?? ''))],
+		];
+	}
+
+	private static function collectColors(array $node, array &$found): void
+	{
+		$fill = null;
+		foreach ($node['fills'] ?? [] as $paint) {
+			if (($paint['type'] ?? '') === 'SOLID' && ($paint['visible'] ?? true)) {
+				$fill = self::hex($paint['color'] ?? [], (float) ($paint['opacity'] ?? 1));
+			}
+		}
+		if ($fill && ($node['type'] ?? '') !== 'TEXT') {
+			$labels = [mb_strtolower(trim((string) ($node['name'] ?? '')))];
+			foreach ($node['children'] ?? [] as $child) {
+				if (($child['type'] ?? '') === 'TEXT') {
+					$labels[] = mb_strtolower(trim((string) ($child['characters'] ?? $child['name'] ?? '')));
+				}
+			}
+			foreach ($labels as $label) {
+				$role = self::COLOR_ROLES[$label] ?? null;
+				if ($role && ! isset($found[$role])) {
+					$found[$role] = $fill;
+					break;
+				}
+			}
+		}
+		foreach ($node['children'] ?? [] as $child) {
+			if (is_array($child)) {
+				self::collectColors($child, $found);
+			}
+		}
+	}
+
 	/**
 	 * @return array{tokens: array, meta: array, warnings: string[]}|WP_Error
 	 */

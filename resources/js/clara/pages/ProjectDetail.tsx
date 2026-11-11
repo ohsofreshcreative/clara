@@ -19,6 +19,7 @@ import { Button, cleanList, inputClass, ListField, Notice, TextAreaField, TextFi
 import DesignSystemPanel from '../components/DesignSystemPanel';
 import SectionEditor from '../components/SectionEditor';
 import { href, navigate } from '../router';
+import { projectDeleted } from '../activeProject';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
@@ -41,7 +42,7 @@ function toForm(p: Project) {
   };
 }
 
-export default function ProjectDetail({ id }: { id: number }) {
+export default function ProjectDetail({ id, tab = '' }: { id: number; tab?: '' | 'style' }) {
   const [project, setProject] = useState<Project | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [types, setTypes] = useState<{ value: string; label: string }[]>([]);
@@ -110,6 +111,7 @@ export default function ProjectDetail({ id }: { id: number }) {
 
     try {
       await deleteProject(project.id);
+      projectDeleted(project.id);
       navigate('projects');
     } catch (e) {
       setSaveMsg({ type: 'error', text: errorMessage(e) });
@@ -170,11 +172,25 @@ export default function ProjectDetail({ id }: { id: number }) {
           <a href={href('projects')} onClick={(e) => { e.preventDefault(); navigate('projects'); }} className="text-sm text-accent-300 hover:text-white">
             ← Projekty
           </a>
-          <h1 className="mt-2 break-words text-3xl font-semibold tracking-tight sm:text-4xl">{project.name}</h1>
+          <h1 className="mt-2 break-words text-3xl font-semibold tracking-tight sm:text-4xl">
+            {project.name}
+            {tab === 'style' && <span className="text-muted"> · Styl</span>}
+          </h1>
           {project.brief.demo && <p className="mt-2 text-sm text-accent-300">Projekt demonstracyjny — treści briefu są przykładowe.</p>}
         </div>
-        <Button variant="danger" onClick={remove}>Usuń projekt</Button>
+        {tab === '' && <Button variant="danger" onClick={remove}>Usuń projekt</Button>}
       </div>
+
+      {tab === 'style' && (
+        <DesignSystemPanel
+          projectId={project.id}
+          hasFigmaUrl={Boolean(project.figma_url)}
+          colorsUrl={project.brief.colorsUrl ?? ''}
+          onColorsUrl={(colorsUrl) => setProject({ ...project, brief: { ...project.brief, colorsUrl } })}
+        />
+      )}
+
+      {tab === '' && (<>
 
       {project.brief.direction && (
         <section className="glass flex flex-col gap-4 rounded-3xl border border-accent-400/40 p-5 shadow-glow sm:flex-row sm:items-center sm:p-6" aria-labelledby="clara-direction-title" data-testid="project-direction">
@@ -218,7 +234,10 @@ export default function ProjectDetail({ id }: { id: number }) {
         </div>
       </form>
 
-      <DesignSystemPanel projectId={project.id} hasFigmaUrl={Boolean(project.figma_url)} />
+      <p className="glass flex flex-col gap-3 rounded-2xl border px-5 py-4 text-muted sm:flex-row sm:items-center sm:justify-between">
+        Kolory, typografia i screeny referencyjne projektu są w zakładce Styl.
+        <a href={href(`projects/${project.id}/style`)} onClick={(e) => { e.preventDefault(); navigate(`projects/${project.id}/style`); }} className="shrink-0 text-accent-300 hover:text-white">Przejdź do stylu →</a>
+      </p>
 
       <section aria-labelledby="clara-files-title" className="glass rounded-3xl border p-5 sm:p-8">
         <h2 id="clara-files-title" className="text-xl font-semibold">Załączniki briefu</h2>
@@ -263,6 +282,7 @@ export default function ProjectDetail({ id }: { id: number }) {
         </div>
         {sectionMsg && <Notice type={sectionMsg.type}>{sectionMsg.text}</Notice>}
       </section>
+      </>)}
     </div>
   );
 }

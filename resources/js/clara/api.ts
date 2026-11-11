@@ -26,6 +26,8 @@ export interface Brief {
   avoid?: string[];
   attachments?: Attachment[];
   direction?: ProjectDirection;
+  /** Link do ramki palety w Figmie (kolory primary / secondary / third). */
+  colorsUrl?: string;
 }
 
 /** Obrany kierunek projektu — wariant, którego stylu trzymają się kolejne generowania. */
@@ -73,7 +75,7 @@ export interface Project {
 }
 
 export type ProjectInput = Partial<Pick<Project, 'name' | 'client_name' | 'industry' | 'website_url' | 'figma_url'>> & {
-  brief?: Omit<Brief, 'attachments' | 'demo'>;
+  brief?: Omit<Brief, 'attachments' | 'demo' | 'direction' | 'colorsUrl'>;
 };
 
 export interface SectionInput {
@@ -97,7 +99,7 @@ export interface Tokens {
 }
 
 export interface DesignSystemSource {
-  type: 'manual' | 'json_import' | 'figma_rest' | 'reference_screens' | 'restore';
+  type: 'manual' | 'json_import' | 'figma_rest' | 'figma_colors' | 'reference_screens' | 'restore';
   createdBy?: number;
   parentVersion?: number | null;
   note?: string;
@@ -313,6 +315,7 @@ export const listDesignSystemVersions = (projectId: number) => claraFetch<Design
 export const saveDesignSystem = (projectId: number, tokens: Tokens, note = '') => claraFetch<DesignSystem>(ds(projectId), 'POST', { tokens, note });
 export const importDesignSystem = (projectId: number, content: string, filename: string) => claraFetch<DesignSystem>(ds(projectId, '/import'), 'POST', { content, filename });
 export const ingestFigma = (projectId: number) => claraFetch<DesignSystem>(ds(projectId, '/figma'), 'POST');
+export const importFigmaColors = (projectId: number, url: string) => claraFetch<DesignSystem>(ds(projectId, '/colors'), 'POST', { url });
 export const removeScreen = (projectId: number, assetId: number) => claraFetch<DesignSystem>(ds(projectId, `/screens/${assetId}`), 'DELETE');
 export const restoreDesignSystem = (id: number) => claraFetch<DesignSystem>(`design-systems/${id}/restore`, 'POST');
 export const getFigmaStatus = () => claraFetch<{ configured: boolean; capabilities: { styles: boolean; variables: boolean }; note: string }>('figma/status');
