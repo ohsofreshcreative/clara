@@ -186,7 +186,8 @@ export default function ProjectDetail({ id, tab = '' }: { id: number; tab?: '' |
           projectId={project.id}
           hasFigmaUrl={Boolean(project.figma_url)}
           colorsUrl={project.brief.colorsUrl ?? ''}
-          onColorsUrl={(colorsUrl) => setProject({ ...project, brief: { ...project.brief, colorsUrl } })}
+          typographyUrl={project.brief.typographyUrl ?? ''}
+          onLink={(key, url) => setProject({ ...project, brief: { ...project.brief, [key]: url } })}
         />
       )}
 

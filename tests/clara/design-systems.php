@@ -267,6 +267,26 @@ try {
 	[$code, $none] = $req('POST', "{$base}/colors", $a, ['url' => $colorsUrl]);
 	$check('kolory z Figmy: brak „primary” → 422 z instrukcją', $code === 422 && str_contains($none['message'] ?? '', 'primary'), [$code, $none['message'] ?? null]);
 
+	// Typografia z osobnej ramki: style próbek (bez fontu etykiet), nagłówki wg rozmiaru, akapity jako Body.
+	delete_transient("clara_figma_{$pid}");
+	$t = fn ($text, $family, $size, $weight, $lh, $name = null) => ['type' => 'TEXT', 'name' => $name ?? $text, 'characters' => $text, 'style' => ['fontFamily' => $family, 'fontSize' => $size, 'fontWeight' => $weight, 'lineHeightPx' => $lh]];
+	$figmaCalls = [];
+	$figmaMock = fn ($url) => $json(200, ['nodes' => ['3301:1897' => ['document' => ['name' => '01a. Fonts - desktop', 'type' => 'SECTION', 'children' => [
+		$t('01a. Fonts – desktop', 'Sora', 48, 600, 60), $t('Usage', 'Sora', 32, 600, 52), $t('h1', 'Sora', 32, 600, 52), $t('72', 'Sora', 32, 600, 52), $t('bold', 'Sora', 32, 600, 52),
+		$t('Bricolage Grotesque', 'Bricolage Grotesque', 60, 500, 62),
+		$t('Hero - simple header 2', 'PolySans', 52, 700, 56), $t('Hero - simple header 1', 'PolySans', 60, 700, 66),
+		$t(str_repeat('Integer pretium interdum lorem ut viverra. ', 4), 'Zalando Sans SemiExpanded', 20, 500, 28),
+	]]]]]);
+	$typoUrl = 'https://www.figma.com/design/AbCdEf1234567890XyZ/H2Otwock?node-id=3301-1897';
+	[$code, $typed] = $req('POST', "{$base}/typography", $a, ['url' => $typoUrl]);
+	$names = array_map(fn ($x) => "{$x['name']} {$x['fontFamily']} {$x['fontSize']}", $typed['tokens']['typography'] ?? []);
+	$check('typografia z Figmy: H1, H2, Body z próbek, bez etykiet (Sora) i próbki nazwy kroju', $code === 201 && $names === ['H1 PolySans 60', 'H2 PolySans 52', 'Body Zalando Sans SemiExpanded 20'] && $typed['source']['type'] === 'figma_typography', [$code, $names, $typed['message'] ?? null]);
+	$check('typografia z Figmy: kolory z ramki zostają, link zapisany', ($typed['tokens']['colors'] ?? []) === $colored['tokens']['colors'] && (Projects::find($pid)['brief']['typographyUrl'] ?? '') === $typoUrl);
+	delete_transient("clara_figma_{$pid}");
+	$figmaMock = fn ($url) => $json(200, ['nodes' => ['3301:1897' => ['document' => ['name' => 'X', 'children' => []]]]]);
+	[$code] = $req('POST', "{$base}/typography", $a, ['url' => $typoUrl]);
+	$check('typografia z Figmy: pusta ramka → 422', $code === 422, $code);
+
 	$errorsByStatus = [
 		[fn () => $json(403, ['status' => 403, 'err' => 'Invalid token ' . FAKE_TOKEN]), 502, 'nie ma dostępu'],
 		[fn () => $json(404, ['status' => 404]), 502, 'Nie znaleziono pliku'],

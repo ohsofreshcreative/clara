@@ -5,6 +5,7 @@ import AmbientBackground from './components/AmbientBackground';
 import Sidebar from './components/Sidebar';
 import Collections from './pages/Collections';
 import Dashboard from './pages/Dashboard';
+import Generate from './pages/Generate';
 import Placeholder from './pages/Placeholder';
 import ProjectDetail from './pages/ProjectDetail';
 import Settings from './pages/Settings';
@@ -21,7 +22,7 @@ function Page() {
     const id = Number(params[0]);
     const tab = params[1] ?? '';
     if (!Number.isInteger(id) || id <= 0) return <Placeholder title="Nie znaleziono strony" />;
-    if (tab === 'generate') return <Dashboard key={`gen-${id}`} projectId={id} />;
+    if (tab === 'generate') return <Generate key={`gen-${id}`} projectId={id} />;
     if (tab === '' || tab === 'style') return <ProjectDetail key={`${id}-${tab}`} id={id} tab={tab} />;
     return <Placeholder title="Nie znaleziono strony" />;
   }

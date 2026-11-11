@@ -190,13 +190,13 @@ export default function Sidebar({ current, params, userName }: { current?: Route
           aria-label="Nawigacja Clara"
           className={`${open ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col gap-6 px-4 pb-6 lg:flex`}
         >
-          <ProjectPicker projects={projects} activeId={activeId} onChoose={choose} onManage={() => { navigate('projects'); close(); }} />
-
           <ul className="flex flex-col gap-1">
             <li>
               <NavLink path="" label="Dashboard" icon="grid" active={current?.path === ''} onNavigate={close} />
             </li>
           </ul>
+
+          <ProjectPicker projects={projects} activeId={activeId} onChoose={choose} onManage={() => { navigate('projects'); close(); }} />
 
           {activeId > 0 && (
             <ul className="flex flex-col gap-1" aria-label="Menu projektu">

@@ -76,7 +76,7 @@ class Projects
 		if (array_key_exists('brief', $data)) {
 			// Załączniki i kierunek projektu zarządzane osobno — zachowujemy je przy edycji briefu.
 			$current = self::find($id);
-			$keep = ['attachments' => $current['brief']['attachments'] ?? []] + array_intersect_key($current['brief'] ?? [], array_flip(['direction', 'colorsUrl']));
+			$keep = ['attachments' => $current['brief']['attachments'] ?? []] + array_intersect_key($current['brief'] ?? [], array_flip(['direction', ...self::FIGMA_LINKS]));
 			$columns['brief_json'] = wp_json_encode(array_diff_key($data['brief'], $keep) + $keep);
 		}
 
@@ -85,13 +85,15 @@ class Projects
 	}
 
 	/** Kierunek projektu (wybrany wariant, którego stylu trzymają się kolejne generowania); null = brak. */
-	/** Link do ramki kolorów w Figmie (pole poza formularzem briefu). */
-	public static function setColorsUrl(int $id, string $url): void
+	public const FIGMA_LINKS = ['colorsUrl', 'typographyUrl'];
+
+	/** Link do ramki kolorów / typografii w Figmie (pola poza formularzem briefu). */
+	public static function setFigmaLink(int $id, string $key, string $url): void
 	{
 		global $wpdb;
 
 		$brief = self::find($id)['brief'] ?? [];
-		$brief['colorsUrl'] = $url;
+		$brief[$key] = $url;
 		$wpdb->update(Schema::table('projects'), [
 			'brief_json' => wp_json_encode($brief),
 			'updated_at' => current_time('mysql', true),

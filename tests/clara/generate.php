@@ -213,6 +213,16 @@ try {
 	$req('POST', '/generate/' . $styled['batch']['items'][0]['id'] . '/render', $a);
 	$body = $sent[0]['body'] ?? '';
 	$check('generowanie ze screenami projektu → /images/edits z 2 obrazami i promptem „style reference”', $code === 201 && count($sent) === 1 && $sent[0]['url'] === OpenAiImageProvider::EDITS_ENDPOINT && substr_count($body, 'name="image[]"') === 2 && str_contains($body, 'style reference') && str_contains($body, 'services section made of cards'), [$code, count($sent), substr_count($body, 'name="image[]"')]);
+
+	// Dashboard: projekty z miniaturą i liczbą inspiracji, ostatnie obrazy — tylko własne.
+	[$code, $dash] = $req('GET', '/dashboard', $a);
+	$mine = array_values(array_filter($dash['projects'] ?? [], fn ($p) => $p['id'] === $pid))[0] ?? null;
+	$check('dashboard: liczniki, projekt z miniaturą i liczbą inspiracji', $code === 200 && $dash['stats']['projects'] >= 1 && $dash['stats']['inspirations'] >= 4 && $mine && $mine['inspirations'] >= 4 && $mine['thumbnail'] && $mine['hasDirection'] === true, [$code, $dash['stats'] ?? null, $mine]);
+	$check('dashboard: ostatnie inspiracje z obrazem i projektem', count($dash['recent']) > 0 && count($dash['recent']) <= 8 && ! array_filter($dash['recent'], fn ($r) => ! $r['imageUrl'] || ! $r['projectName']), array_slice($dash['recent'], 0, 2));
+	[$code, $other] = $req('GET', '/dashboard', $b);
+	$check('dashboard: inny użytkownik nie widzi cudzych projektów i obrazów', $code === 200 && ! array_filter($other['projects'], fn ($p) => $p['id'] === $pid) && ! array_filter($other['recent'], fn ($r) => $r['projectId'] === $pid), $other['stats'] ?? null);
+	[$code] = $req('GET', '/dashboard', 0);
+	$check('dashboard: niezalogowany 401', $code === 401, $code);
 	remove_filter('pre_http_request', $openai, 99);
 	remove_all_filters('clara/openai_api_key');
 	add_filter('clara/image_provider', $fakeFilter);

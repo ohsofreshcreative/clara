@@ -89,6 +89,78 @@ class FigmaClient
 		];
 	}
 
+	/**
+	 * Typografia z ramki: style faktycznie użyte we wzorcach tekstu. Font adnotacji (najczęstszy krój —
+	 * etykiety tabel, tytuł ramki) i próbki nazw krojów są pomijane. Nagłówki H1…H6 wg rozmiaru, długie
+	 * akapity jako Body.
+	 *
+	 * @return array{typography: array<int, array>, meta: array}|WP_Error
+	 */
+	public static function typography(string $fileKey, string $nodeId): array|WP_Error
+	{
+		$data = self::get('files/' . rawurlencode($fileKey) . '/nodes?ids=' . rawurlencode($nodeId));
+		if (is_wp_error($data)) {
+			return $data;
+		}
+		$root = $data['nodes'][$nodeId]['document'] ?? null;
+		if (! is_array($root)) {
+			return new WP_Error('clara_figma_node', __('Nie znaleziono wskazanej ramki w pliku Figma — sprawdź link (node-id).', 'clara'), ['status' => 404]);
+		}
+
+		$texts = [];
+		$collect = function (array $node) use (&$collect, &$texts) {
+			if (($node['type'] ?? '') === 'TEXT' && ! empty($node['style']['fontFamily']) && ($node['visible'] ?? true)) {
+				$texts[] = $node;
+			}
+			foreach ($node['children'] ?? [] as $child) {
+				is_array($child) && $collect($child);
+			}
+		};
+		$collect($root);
+
+		$families = array_count_values(array_map(fn ($t) => (string) $t['style']['fontFamily'], $texts));
+		arsort($families);
+		$annotation = count($families) > 1 ? (string) array_key_first($families) : null;
+
+		$styles = [];
+		foreach ($texts as $t) {
+			$s = $t['style'];
+			$text = trim((string) ($t['characters'] ?? ''));
+			if ($s['fontFamily'] === $annotation || mb_strtolower($text) === mb_strtolower((string) $s['fontFamily'])) {
+				continue;
+			}
+			$key = implode('|', [$s['fontFamily'], $s['fontWeight'] ?? 400, $s['fontSize'] ?? 0, round((float) ($s['lineHeightPx'] ?? 0))]);
+			$styles[$key] ??= [
+				'label' => mb_strtolower(trim((string) ($t['name'] ?? ''))),
+				'body' => mb_strlen($text) > 80,
+				'fontFamily' => (string) $s['fontFamily'],
+				'fontSize' => isset($s['fontSize']) ? round((float) $s['fontSize'], 2) : null,
+				'fontWeight' => (int) ($s['fontWeight'] ?? 400),
+				'lineHeight' => isset($s['lineHeightPx']) ? round((float) $s['lineHeightPx'], 2) : null,
+			];
+		}
+		usort($styles, fn ($a, $b) => [$a['body'], -$a['fontSize']] <=> [$b['body'], -$b['fontSize']]);
+
+		$typography = [];
+		$heading = 0;
+		$body = 0;
+		foreach ($styles as $style) {
+			if (preg_match('/^(h[1-6]|body|caption|small|lead)\b/', $style['label'], $m)) {
+				$name = ucfirst($m[1]);
+			} elseif ($style['body']) {
+				$name = ['Body', 'Body small', 'Caption'][$body++] ?? 'Body ' . $body;
+			} else {
+				$name = ++$heading <= 6 ? "H{$heading}" : "Text {$heading}";
+			}
+			$typography[] = ['name' => $name] + array_diff_key($style, ['label' => 1, 'body' => 1]);
+		}
+
+		return [
+			'typography' => array_slice($typography, 0, 12),
+			'meta' => ['fileKey' => $fileKey, 'nodeId' => $nodeId, 'nodeName' => sanitize_text_field((string) ($root['name'] ?? '')), 'fileName' => sanitize_text_field((string) ($data['name'] ?? '')), 'annotationFont' => $annotation],
+		];
+	}
+
 	private static function collectColors(array $node, array &$found): void
 	{
 		$fill = null;

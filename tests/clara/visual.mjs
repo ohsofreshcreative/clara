@@ -154,15 +154,20 @@ for (const vp of [
   check('sidebar: wybór projektu na górze, Dashboard i Ustawienia (bez Projekty/Kolekcje/Biblioteka)', (await page.getByTestId('project-picker').count()) === 1 && (await navLinks.allInnerTexts()).map((t) => t.trim()).join('|') === 'Dashboard|Ustawienia');
   check('sidebar: postać w lustrzanym odbiciu (dekoracja)', vp.width < 1024 || (await page.locator('#clara-nav [aria-hidden="true"] img').evaluate((img) => (getComputedStyle(img).scale.startsWith('-1') || getComputedStyle(img).transform.startsWith('matrix(-1')) && img.alt === '')));
   if (vp.width >= 1024) check('sidebar widoczny na desktopie', await navLinks.first().isVisible());
-  check('tryby Generuj inspiracje / Szukaj zdjęć', (await page.getByRole('radio').count()) === 2);
-  check('composer bez nieaktywnych przycisków „wkrótce”', !(await page.locator('form button[disabled]').count()));
-  check('filtry projekt/design system/klient', (await page.locator('main').getByRole('combobox').count()) === 3);
-  check('4 szybkie starty', (await page.getByRole('button', { name: /Sekcja hero|O nas|Usługi|Cennik/ }).count()) === 4);
+  check('sidebar: Dashboard nad wyborem projektu', await page.evaluate(() => {
+    const dash = [...document.querySelectorAll('#clara-nav a')].find((a) => a.textContent.trim() === 'Dashboard');
+    const picker = document.querySelector('[data-testid="project-picker"]');
+    return Boolean(dash && picker && dash.compareDocumentPosition(picker) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }));
+  check('dashboard bez generatora (praca tylko w projektach)', (await page.locator('#clara-prompt').count()) === 0 && (await page.getByRole('radio').count()) === 0);
+  check('dashboard: podsumowanie (3 liczniki)', (await page.getByRole('definition').count()) === 3 && (await seen(page.getByText('Wygenerowane inspiracje'))));
+  check('dashboard: sekcje Projekty i Ostatnie inspiracje', (await page.getByRole('heading', { level: 2, name: 'Projekty' }).isVisible()) && (await page.getByRole('heading', { level: 2, name: 'Ostatnie inspiracje' }).isVisible()));
+  check('dashboard: kafelek „Nowy projekt”', await seen(page.getByTestId('dashboard-new-project')));
   check('brak fikcyjnych danych z mockupu', !(await page.getByText(/Plan Pro|1 240|2 000 generacji/).count()));
 
   // Postać hero jest dekoracją: nie może przechwytywać kliknięć w kontrolki ani nagłówek.
   const covered = await page.evaluate(() => {
-    const targets = ['h1', '#clara-prompt', 'form button[type="submit"]', 'main select'];
+    const targets = ['h1', '[data-testid="dashboard-new-project"]', 'main h2'];
     return targets.filter((sel) => {
       const el = document.querySelector(sel);
       el.scrollIntoView({ block: 'center' });
@@ -210,33 +215,19 @@ for (const vp of [
     check('mobile: Escape zamyka menu', !(await page.locator('#clara-nav').isVisible()));
   }
 
-  // Happy path: szybki start wypełnia prompt i ustawia focus.
-  await page.getByRole('button', { name: /Sekcja hero/ }).click();
-  const prompt = page.locator('#clara-prompt');
-  check('szybki start wypełnia prompt', (await prompt.inputValue()).includes('sekcję hero') && (await prompt.evaluate((el) => el === document.activeElement)));
-
-  // Tryb zmienia akcję; domyślnie generowanie sekcji.
-  check('domyślnie tryb Generuj inspiracje', await page.getByRole('button', { name: 'Generuj inspiracje' }).isVisible());
-  await page.locator('label', { hasText: 'Szukaj zdjęć' }).click();
-  check('tryb Szukaj zdjęć zmienia przycisk', await page.getByRole('button', { name: 'Szukaj zdjęć' }).isVisible());
-  await page.locator('label', { hasText: 'Generuj inspiracje' }).click();
-
-  // Błędne dane: zbyt krótki prompt.
-  await prompt.fill('abc');
-  await page.getByRole('button', { name: 'Generuj inspiracje' }).click();
-  check('walidacja zbyt krótkiego promptu', (await page.getByRole('alert').filter({ hasText: 'Opisz sekcję' }).isVisible()) && (await prompt.getAttribute('aria-invalid')) === 'true');
-
-  // Testy działają bez klucza AI: serwer odpowiada jasnym błędem, bez udawanego wyniku.
-  await prompt.fill('sekcja Hero basen otwock h2otwock');
-  await page.getByRole('button', { name: 'Generuj inspiracje' }).click();
-  check('bez klucza AI: komunikat zamiast udawanych sekcji', (await seen(page.getByText(/wymaga klucza OpenAI/))) && !(await page.getByTestId('generated-item').count()));
-
   // Render 4 inspiracji (odpowiedzi API podstawione w przeglądarce — bez kosztów). Warianty kończą się w różnym czasie.
   const genBodies = [];
   let direction = null;
+  let noKey = true;
   await page.route('**/clara/v1/generate*', (route) => {
     if (route.request().method() !== 'POST') return route.continue();
     const body = route.request().postDataJSON() ?? {};
+    // Walidację promptu robi serwer naprawdę; brak klucza AI — odpowiedź jak z serwera bez klucza.
+    if (String(body.prompt ?? '').trim().length < 5) return route.continue();
+    if (noKey) {
+      noKey = false;
+      return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ code: 'clara_image_unconfigured', message: 'Generowanie inspiracji wymaga klucza OpenAI (CLARA_OPENAI_API_KEY w wp-config.php).', data: { status: 409 } }) });
+    }
     genBodies.push(body);
     return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(generateFixture(Boolean(body.keepDirection), genBodies.length - 1, body.round ?? 0)) });
   });
@@ -269,6 +260,35 @@ for (const vp of [
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ direction }) });
   });
 
+
+  // Generowanie żyje w projekcie: /projects/:id/generate.
+  await page.goto(`${URL}/projects/${GEN_PROJECT.id}/generate`, { waitUntil: 'networkidle' });
+  check('GEN: strona Generowanie projektu', await seen(page.getByRole('heading', { level: 1, name: /H2Otwock — test · Generowanie/ })));
+  check('GEN: menu projektu Przegląd → Generowanie → Styl', (await page.locator('ul[aria-label="Menu projektu"] a').allTextContents()).map((t) => t.trim()).join('|') === 'Przegląd|Generowanie|Styl');
+  check('tryby Generuj inspiracje / Szukaj zdjęć', (await page.getByRole('radio').count()) === 2);
+  check('composer bez nieaktywnych przycisków „wkrótce”', !(await page.locator('form button[disabled]').count()));
+  check('4 szybkie starty', (await page.getByRole('button', { name: /Sekcja hero|O nas|Usługi|Cennik/ }).count()) === 4);
+  // Happy path: szybki start wypełnia prompt i ustawia focus.
+  await page.getByRole('button', { name: /Sekcja hero/ }).click();
+  const prompt = page.locator('#clara-prompt');
+  check('szybki start wypełnia prompt', (await prompt.inputValue()).includes('sekcję hero') && (await prompt.evaluate((el) => el === document.activeElement)));
+
+  // Tryb zmienia akcję; domyślnie generowanie sekcji.
+  check('domyślnie tryb Generuj inspiracje', await page.getByRole('button', { name: 'Generuj inspiracje' }).isVisible());
+  await page.locator('label', { hasText: 'Szukaj zdjęć' }).click();
+  check('tryb Szukaj zdjęć zmienia przycisk', await page.getByRole('button', { name: 'Szukaj zdjęć' }).isVisible());
+  await page.locator('label', { hasText: 'Generuj inspiracje' }).click();
+
+  // Błędne dane: zbyt krótki prompt.
+  await prompt.fill('abc');
+  await page.getByRole('button', { name: 'Generuj inspiracje' }).click();
+  check('walidacja zbyt krótkiego promptu', (await page.getByRole('alert').filter({ hasText: 'Opisz sekcję' }).isVisible()) && (await prompt.getAttribute('aria-invalid')) === 'true');
+
+  // Testy działają bez klucza AI: serwer odpowiada jasnym błędem, bez udawanego wyniku.
+  await prompt.fill('sekcja Hero basen otwock h2otwock');
+  await page.getByRole('button', { name: 'Generuj inspiracje' }).click();
+  check('bez klucza AI: komunikat zamiast udawanych sekcji', (await seen(page.getByText(/wymaga klucza OpenAI/))) && !(await page.getByTestId('generated-item').count()));
+
   await page.getByRole('button', { name: 'Generuj inspiracje' }).click();
   const generated = page.getByTestId('generated-item');
   const progress = page.getByTestId('generated-progress');
@@ -295,6 +315,8 @@ for (const vp of [
   check('DIR: wariant oznaczony jako kierunek projektu', await seen(generated.nth(1).getByText('Kierunek projektu')));
   const toggle = page.getByTestId('direction-toggle');
   check('DIR: opcja „Trzymaj się kierunku projektu” włączona, z miniaturą', (await seen(toggle)) && (await toggle.getByRole('checkbox').isChecked()) && (await toggle.locator('img').count()) === 1);
+  // Wyniki przewijają się płynnie (scrollIntoView smooth) — klik dopiero po zatrzymaniu przewijania.
+  await page.waitForFunction(() => new Promise((ok) => { const pos = () => [...document.querySelectorAll('main, main *')].filter((el) => el.scrollTop).map((el) => el.scrollTop).join(); const a = pos(); setTimeout(() => ok(a === pos()), 300); }), null, { timeout: 5000 }).catch(() => {});
   await page.getByRole('button', { name: 'Generuj inspiracje' }).click();
   await seen(page.getByRole('heading', { name: '4 odmiany w kierunku projektu' }));
   check('DIR: kolejne generowanie w tym samym projekcie, z flagą kierunku', genBodies.at(-1)?.projectId === GEN_PROJECT.id && genBodies.at(-1)?.keepDirection === true, JSON.stringify(genBodies.at(-1)));
@@ -336,7 +358,10 @@ for (const vp of [
   await page.getByRole('button', { name: 'Zarządzaj projektami' }).click();
   check('routing: /projects', new globalThis.URL(page.url()).pathname === '/projects' && (await page.getByRole('heading', { level: 1, name: 'Projekty' }).isVisible()));
   await page.goBack();
-  check('routing: powrót do dashboardu', await heading.isVisible());
+  check('routing: powrót do generowania', await seen(page.getByRole('heading', { level: 1, name: /· Generowanie/ })));
+  if (vp.width < 1024) await page.getByRole('button', { name: /Otwórz menu/ }).click();
+  await page.locator('#clara-nav').getByRole('link', { name: 'Dashboard' }).click();
+  check('routing: Dashboard z menu', await heading.isVisible());
 
   // 409 z /generate jest oczekiwany (test bez klucza OpenAI).
   check('brak błędów JS w konsoli', errors.filter((e) => !/status of 409.*\/clara\/v1\/generate/.test(e)).length === 0, errors.join(' | '));
@@ -442,7 +467,7 @@ for (const vp of [
 
   // Sidebar: wybrany projekt + menu projektu (Przegląd, Styl, Generowanie).
   const projectMenu = page.getByRole('list', { name: 'Menu projektu' });
-  check('sidebar: menu projektu po wejściu w projekt', (await projectMenu.getByRole('link').allInnerTexts()).map((t) => t.trim()).join('|') === 'Przegląd|Styl|Generowanie');
+  check('sidebar: menu projektu po wejściu w projekt', (await projectMenu.getByRole('link').allInnerTexts()).map((t) => t.trim()).join('|') === 'Przegląd|Generowanie|Styl');
   const dsId = dsProjectUrl.match(/\/projects\/(\d+)/)[1];
   const dsName = await page.getByRole('heading', { level: 1 }).innerText();
   await page.getByTestId('project-picker-name').filter({ hasText: dsName.trim() }).waitFor({ timeout: 5000 }).catch(() => {});
@@ -459,8 +484,8 @@ for (const vp of [
   const panel = page.locator('section', { has: page.getByRole('heading', { name: 'Styl projektu' }) });
   check('DS: stan pusty', await seen(panel.getByText('Brak wersji')));
   check('Styl: tylko kolory i typografia (bez cieni, odstępów, zaokrągleń)', (await panel.locator('fieldset legend').allInnerTexts()).map((t) => t.replace(/\s*\(\d+\)/, '').trim()).join('|') === 'Kolory|Typografia');
-  check('Styl: pole linku do kolorów z Figmy', (await panel.getByLabel('Kolory z Figmy').count()) === 1 && (await panel.getByRole('button', { name: 'Pobierz kolory' }).isDisabled()));
-  check('DS: Figma wyłączona bez tokenu + informacja o Enterprise', (await panel.getByRole('button', { name: 'Pobierz typografię i frame’y z Figmy' }).isDisabled()) && (await seen(panel.getByText(/Enterprise/))));
+  check('Styl: osobne linki do ramek kolorów i typografii z Figmy', (await panel.getByLabel('Kolory z Figmy').count()) === 1 && (await panel.getByLabel('Typografia z Figmy').count()) === 1 && (await panel.getByTestId('ds-colors-url-link').getByRole('button', { name: 'Pobierz' }).isDisabled()) && (await panel.getByTestId('ds-typography-url-link').getByRole('button', { name: 'Pobierz' }).isDisabled()));
+  check('DS: Figma wyłączona bez tokenu + informacja o Enterprise', (await panel.getByRole('button', { name: 'Pobierz style i frame’y z pliku Figma' }).isDisabled()) && (await seen(panel.getByText(/Enterprise/))));
 
   await panel.getByRole('button', { name: '+ Dodaj: kolory' }).click();
   await panel.getByLabel('Kolory 1: Nazwa').fill('Primary');
@@ -688,7 +713,7 @@ for (const vp of [
   await page.waitForURL(/\/projects\/\d+$/);
   const projectId = page.url().split('/').pop();
 
-  await page.goto(`${URL}/`, { waitUntil: 'networkidle' });
+  await page.goto(`${URL}/projects/${projectId}/generate`, { waitUntil: 'networkidle' });
   await page.locator('label', { hasText: 'Szukaj zdjęć' }).click();
   await page.locator('#clara-prompt').fill('basen hero');
   await page.getByRole('button', { name: 'Szukaj zdjęć' }).click();
@@ -701,11 +726,9 @@ for (const vp of [
   const linkStatus = (await page.request.get(href)).status();
   check('INS: link źródłowy działa (nowa karta, noopener)', linkStatus === 200 && (await source.getAttribute('target')) === '_blank' && (await source.getAttribute('rel')).includes('noopener'), `${href} → ${linkStatus}`);
 
-  // Zapis bez wybranego projektu: trafia do ostatniego projektu (tu: właśnie utworzonego), bez błędu.
+  // Wyszukiwanie w zakładce projektu: zapis trafia do tego projektu.
   await cards.nth(0).getByRole('button', { name: 'Zapisz' }).click();
-  check('INS: zapis bez wyboru projektu → ostatni projekt', (await seen(cards.nth(0).getByText('Zapisano'))) && (await page.locator('#clara-save-project').inputValue()) === projectId && !(await page.getByText('Wybierz projekt, do którego').count()));
-  await page.locator('#clara-filter-project').selectOption(projectId);
-  check('INS: filtr projektu ustawia projekt zapisu', (await page.locator('#clara-save-project').inputValue()) === projectId);
+  check('INS: zapis do bieżącego projektu', (await seen(cards.nth(0).getByText('Zapisano'))) && (await page.locator('#clara-save-project').inputValue()) === projectId && !(await page.getByText('Wybierz projekt, do którego').count()));
 
   await page.setViewportSize({ width: 390, height: 844 });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

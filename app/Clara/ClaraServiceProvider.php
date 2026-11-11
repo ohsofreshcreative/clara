@@ -6,6 +6,7 @@ use App\Clara\Cli\ClaraCommand;
 use App\Clara\Creative\ImageJobs;
 use App\Clara\Database\Schema;
 use App\Clara\Http\ArtDirectionsController;
+use App\Clara\Http\DashboardController;
 use App\Clara\Http\DesignSystemsController;
 use App\Clara\Http\FigmaController;
 use App\Clara\Http\GalleryController;
@@ -28,6 +29,7 @@ class ClaraServiceProvider extends ServiceProvider
 		add_action('rest_api_init', function () {
 			(new StatusController())->register();
 			(new ProjectsController())->register();
+			(new DashboardController())->register();
 			(new DesignSystemsController())->register();
 			(new ArtDirectionsController())->register();
 			(new ImagesController())->register();

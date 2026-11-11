@@ -49,8 +49,8 @@ export function useActiveProject(): number {
 /** Podstrony projektu w sidebarze: `projects/:id` + segment. */
 export const projectTabs = [
   { segment: '', label: 'Przegląd', icon: 'folder' },
-  { segment: 'style', label: 'Styl', icon: 'layers' },
   { segment: 'generate', label: 'Generowanie', icon: 'sparkles' },
+  { segment: 'style', label: 'Styl', icon: 'layers' },
 ] as const;
 
 export type ProjectTab = (typeof projectTabs)[number]['segment'];

@@ -42,6 +42,7 @@ class DesignSystemsController extends Controller
 		$route('/projects/(?P<id>\d+)/design-systems/figma', WP_REST_Server::CREATABLE, 'ingestFigma');
 		$route('/projects/(?P<id>\d+)/design-systems/screens', WP_REST_Server::CREATABLE, 'addScreen');
 		$route('/projects/(?P<id>\d+)/design-systems/colors', WP_REST_Server::CREATABLE, 'figmaColors');
+		$route('/projects/(?P<id>\d+)/design-systems/typography', WP_REST_Server::CREATABLE, 'figmaTypography');
 		$route('/design-systems/(?P<id>\d+)', WP_REST_Server::READABLE, 'show');
 		$route('/design-systems/(?P<id>\d+)/restore', WP_REST_Server::CREATABLE, 'restore');
 
@@ -177,9 +178,11 @@ class DesignSystemsController extends Controller
 		}
 
 		$latest = DesignSystems::latest($project['id']);
-		// Kolory pobrane z ramki palety mają pierwszeństwo przed stylami kolorów z pliku.
-		if (! empty($project['brief']['colorsUrl']) && ! empty($latest['tokens']['colors'])) {
-			$tokens['colors'] = $latest['tokens']['colors'];
+		// Kolory i typografia pobrane z ramek mają pierwszeństwo przed stylami z pliku.
+		foreach (['colors' => 'colorsUrl', 'typography' => 'typographyUrl'] as $group => $link) {
+			if (! empty($project['brief'][$link]) && ! empty($latest['tokens'][$group])) {
+				$tokens[$group] = $latest['tokens'][$group];
+			}
 		}
 		// Podglądy frame'ów zastępują poprzednie z Figmy; screeny dodane ręcznie zostają.
 		$assets = array_values(array_filter($latest['assets'] ?? [], fn ($a) => ($a['role'] ?? '') !== 'figma_frame'));
@@ -202,6 +205,17 @@ class DesignSystemsController extends Controller
 	 */
 	public function figmaColors(WP_REST_Request $request): WP_REST_Response|WP_Error
 	{
+		return $this->fromFigmaFrame($request, 'colors');
+	}
+
+	/** Typografia z linku do ramki z fontami — zastępuje typografię, kolory i screeny zostają. */
+	public function figmaTypography(WP_REST_Request $request): WP_REST_Response|WP_Error
+	{
+		return $this->fromFigmaFrame($request, 'typography');
+	}
+
+	private function fromFigmaFrame(WP_REST_Request $request, string $group): WP_REST_Response|WP_Error
+	{
 		$project = $this->ownedProject((int) $request['id']);
 		if (is_wp_error($project)) {
 			return $project;
@@ -212,7 +226,8 @@ class DesignSystemsController extends Controller
 		$fileKey = $url !== '' && in_array($host, ['figma.com', 'www.figma.com'], true) ? FigmaClient::fileKey($url) : null;
 		$nodeId = $fileKey ? FigmaClient::nodeId($url) : null;
 		if (! $fileKey || ! $nodeId) {
-			return new WP_Error('clara_figma_colors_url', __('Wklej link do ramki z kolorami w Figmie (z parametrem node-id — PPM na ramce → Copy link).', 'clara'), ['status' => 400, 'params' => ['url' => __('Niepoprawny link do ramki Figma.', 'clara')]]);
+			$what = $group === 'colors' ? 'z kolorami' : 'z typografią';
+			return new WP_Error('clara_figma_frame_url', sprintf(__('Wklej link do ramki %s w Figmie (z parametrem node-id — PPM na ramce → Copy link).', 'clara'), $what), ['status' => 400, 'params' => ['url' => __('Niepoprawny link do ramki Figma.', 'clara')]]);
 		}
 
 		$lock = 'clara_figma_' . $project['id'];
@@ -221,20 +236,26 @@ class DesignSystemsController extends Controller
 		}
 		set_transient($lock, 1, self::FIGMA_COOLDOWN);
 
-		$result = FigmaClient::colors($fileKey, $nodeId);
+		$result = $group === 'colors' ? FigmaClient::colors($fileKey, $nodeId) : FigmaClient::typography($fileKey, $nodeId);
 		if (is_wp_error($result)) {
 			return $result;
 		}
-		if (! array_filter($result['colors'], fn ($c) => $c['name'] === 'Primary')) {
+		if ($group === 'colors' && ! array_filter($result['colors'], fn ($c) => $c['name'] === 'Primary')) {
 			return new WP_Error('clara_figma_colors_missing', __('Nie znaleziono koloru „primary” we wskazanej ramce — kolory powinny mieć podpis lub nazwę warstwy primary / secondary / third.', 'clara'), ['status' => 422]);
 		}
+		if ($group === 'typography' && ! $result['typography']) {
+			return new WP_Error('clara_figma_typography_missing', __('Nie znaleziono stylów tekstu we wskazanej ramce — wskaż ramkę z próbkami nagłówków i treści.', 'clara'), ['status' => 422]);
+		}
 
-		Projects::setColorsUrl($project['id'], $url);
 		$latest = DesignSystems::latest($project['id']);
-		$tokens = ($latest['tokens'] ?? array_fill_keys(TokenSchema::GROUPS, []));
-		$tokens['colors'] = $result['colors'];
+		$tokens = TokenSchema::validate(['colors' => $latest['tokens']['colors'] ?? [], 'typography' => $latest['tokens']['typography'] ?? [], $group => $result[$group]] + ($latest['tokens'] ?? []));
+		if (is_wp_error($tokens)) {
+			return new WP_Error('clara_figma_invalid', __('Wartości z Figmy nie dają się zapisać jako tokeny.', 'clara'), $tokens->get_error_data());
+		}
 
-		return $this->store($project['id'], $tokens, null, ['type' => 'figma_colors', 'url' => $url] + $result['meta']);
+		Projects::setFigmaLink($project['id'], $group === 'colors' ? 'colorsUrl' : 'typographyUrl', $url);
+
+		return $this->store($project['id'], $tokens, null, ['type' => 'figma_' . $group, 'url' => $url] + $result['meta']);
 	}
 
 	public function addScreen(WP_REST_Request $request): WP_REST_Response|WP_Error

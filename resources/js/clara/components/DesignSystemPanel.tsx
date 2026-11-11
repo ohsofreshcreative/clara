@@ -7,6 +7,7 @@ import {
   getLatestDesignSystem,
   importDesignSystem,
   importFigmaColors,
+  importFigmaTypography,
   ingestFigma,
   listDesignSystemVersions,
   removeScreen,
@@ -50,6 +51,7 @@ export const sourceLabels: Record<DesignSystemSource['type'], string> = {
   json_import: 'Import JSON',
   figma_rest: 'Figma (style REST)',
   figma_colors: 'Figma (kolory z ramki)',
+  figma_typography: 'Figma (typografia z ramki)',
   reference_screens: 'Screeny referencyjne',
   restore: 'Przywrócenie',
 };
@@ -68,8 +70,33 @@ function toPayload(draft: Record<Group, Row[]>): Tokens {
   return out as unknown as Tokens;
 }
 
-export default function DesignSystemPanel({ projectId, hasFigmaUrl, colorsUrl = '', onColorsUrl }: { projectId: number; hasFigmaUrl: boolean; colorsUrl?: string; onColorsUrl?: (url: string) => void }) {
+/** Link do jednej ramki w Figmie (kolory albo typografia) + pobranie. */
+function FrameImport({ id, title, hint, value, onChange, error, disabled, onImport }: { id: string; title: string; hint: string; value: string; onChange: (v: string) => void; error?: string; disabled: boolean; onImport: () => void }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-line p-4" data-testid={`${id}-link`}>
+      <label htmlFor={id} className="font-semibold">{title}</label>
+      <p className="text-sm text-muted">{hint}</p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input
+          id={id}
+          type="url"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://www.figma.com/design/…?node-id=…"
+          aria-invalid={Boolean(error)}
+          className="w-full min-w-0 flex-1 rounded-xl border border-line bg-ink-850 px-4 py-2.5 text-white placeholder:text-subtle aria-[invalid=true]:border-red-400"
+        />
+        <Button disabled={disabled || !value.trim()} onClick={onImport}>Pobierz</Button>
+      </div>
+      {error && <p className="text-sm text-red-300">{error}</p>}
+    </div>
+  );
+}
+
+export default function DesignSystemPanel({ projectId, hasFigmaUrl, colorsUrl = '', typographyUrl = '', onLink }: { projectId: number; hasFigmaUrl: boolean; colorsUrl?: string; typographyUrl?: string; onLink?: (key: 'colorsUrl' | 'typographyUrl', url: string) => void }) {
   const [colorsLink, setColorsLink] = useState(colorsUrl);
+  const [typographyLink, setTypographyLink] = useState(typographyUrl);
+  const [target, setTarget] = useState<'colors' | 'typography' | null>(null);
   const [current, setCurrent] = useState<DesignSystem | null>(null);
   const [draft, setDraft] = useState<Record<Group, Row[]>>(emptyTokens() as unknown as Record<Group, Row[]>);
   const [versions, setVersions] = useState<DesignSystemVersion[]>([]);
@@ -139,38 +166,47 @@ export default function DesignSystemPanel({ projectId, hasFigmaUrl, colorsUrl = 
         </p>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-line p-4" data-testid="ds-colors-link">
-        <label htmlFor="ds-colors-url" className="font-semibold">Kolory z Figmy</label>
-        <p className="text-sm text-muted">Wklej link do ramki z paletą (PPM na ramce → Copy link). Clara pobierze kolory primary, secondary i — jeśli jest — third, bez odcieni.</p>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            id="ds-colors-url"
-            type="url"
-            value={colorsLink}
-            onChange={(e) => setColorsLink(e.target.value)}
-            placeholder="https://www.figma.com/design/…?node-id=…"
-            aria-invalid={Boolean(errors.url)}
-            className="w-full min-w-0 flex-1 rounded-xl border border-line bg-ink-850 px-4 py-2.5 text-white placeholder:text-subtle aria-[invalid=true]:border-red-400"
-          />
-          <Button
-            disabled={busy || !figmaReady || !colorsLink.trim()}
-            onClick={() => run(() => importFigmaColors(projectId, colorsLink.trim()), (ds) => {
-              onColorsUrl?.(colorsLink.trim());
+      <div className="grid gap-4 lg:grid-cols-2">
+        <FrameImport
+          id="ds-colors-url"
+          title="Kolory z Figmy"
+          hint="Link do ramki z paletą (PPM na ramce → Copy link). Clara pobierze primary, secondary i — jeśli jest — third, bez odcieni."
+          value={colorsLink}
+          onChange={setColorsLink}
+          error={target === 'colors' ? errors.url : undefined}
+          disabled={busy || !figmaReady}
+          onImport={() => {
+            setTarget('colors');
+            run(() => importFigmaColors(projectId, colorsLink.trim()), (ds) => {
+              onLink?.('colorsUrl', colorsLink.trim());
               return `Pobrano kolory: ${ds.tokens.colors.map((c) => c.name).join(', ')} — v${ds.version}.`;
-            })}
-          >
-            Pobierz kolory
-          </Button>
-        </div>
-        {errors.url && <p className="text-sm text-red-300">{errors.url}</p>}
-        {!figmaReady && <p className="text-sm text-subtle">Figma REST nie jest skonfigurowana na serwerze (brak tokenu Figmy).</p>}
+            });
+          }}
+        />
+        <FrameImport
+          id="ds-typography-url"
+          title="Typografia z Figmy"
+          hint="Link do ramki z fontami. Clara weźmie style faktycznie użyte w próbkach tekstu (nagłówki H1–H6, treść), pomijając etykiety opisów."
+          value={typographyLink}
+          onChange={setTypographyLink}
+          error={target === 'typography' ? errors.url : undefined}
+          disabled={busy || !figmaReady}
+          onImport={() => {
+            setTarget('typography');
+            run(() => importFigmaTypography(projectId, typographyLink.trim()), (ds) => {
+              onLink?.('typographyUrl', typographyLink.trim());
+              return `Pobrano typografię: ${ds.tokens.typography.length} stylów — v${ds.version}.`;
+            });
+          }}
+        />
       </div>
+      {!figmaReady && <p className="-mt-3 text-sm text-subtle">Figma REST nie jest skonfigurowana na serwerze (brak tokenu Figmy).</p>}
 
       <div className="flex flex-col gap-3 rounded-2xl border border-line p-4">
         <h3 className="font-semibold">Inne źródła</h3>
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="ghost" disabled={busy || !figmaReady || !hasFigmaUrl} onClick={() => run(() => ingestFigma(projectId), (ds) => `Pobrano style z Figmy — v${ds.version}.`)}>
-            Pobierz typografię i frame’y z Figmy
+            Pobierz style i frame’y z pliku Figma
           </Button>
           <label htmlFor="ds-import" className="inline-flex cursor-pointer items-center rounded-xl border border-line px-5 py-2.5 text-muted hover:border-accent-500 hover:text-white has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent-300">
             Importuj JSON
@@ -182,7 +218,7 @@ export default function DesignSystemPanel({ projectId, hasFigmaUrl, colorsUrl = 
             ? 'Figma REST nie jest skonfigurowana na serwerze (brak tokenu). '
             : !hasFigmaUrl
               ? 'Uzupełnij link do pliku Figma w danych projektu. '
-              : 'Pobiera style tekstu i podglądy głównych frame’ów z pliku projektu (kolory pobrane z ramki zostają). '}
+              : 'Pobiera style z pliku projektu i podglądy głównych frame’ów jako screeny referencyjne (kolory i typografia z ramek powyżej zostają). '}
           Zmienne Figmy przez REST wymagają planu Enterprise — wyeksportuj je jako JSON (W3C Design Tokens) i zaimportuj.
         </p>
       </div>

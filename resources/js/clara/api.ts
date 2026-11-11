@@ -28,6 +28,8 @@ export interface Brief {
   direction?: ProjectDirection;
   /** Link do ramki palety w Figmie (kolory primary / secondary / third). */
   colorsUrl?: string;
+  /** Link do ramki z typografią w Figmie. */
+  typographyUrl?: string;
 }
 
 /** Obrany kierunek projektu — wariant, którego stylu trzymają się kolejne generowania. */
@@ -75,7 +77,7 @@ export interface Project {
 }
 
 export type ProjectInput = Partial<Pick<Project, 'name' | 'client_name' | 'industry' | 'website_url' | 'figma_url'>> & {
-  brief?: Omit<Brief, 'attachments' | 'demo' | 'direction' | 'colorsUrl'>;
+  brief?: Omit<Brief, 'attachments' | 'demo' | 'direction' | 'colorsUrl' | 'typographyUrl'>;
 };
 
 export interface SectionInput {
@@ -99,7 +101,7 @@ export interface Tokens {
 }
 
 export interface DesignSystemSource {
-  type: 'manual' | 'json_import' | 'figma_rest' | 'figma_colors' | 'reference_screens' | 'restore';
+  type: 'manual' | 'json_import' | 'figma_rest' | 'figma_colors' | 'figma_typography' | 'reference_screens' | 'restore';
   createdBy?: number;
   parentVersion?: number | null;
   note?: string;
@@ -298,6 +300,25 @@ export function claraFetch<T>(route: string, method = 'GET', data?: unknown): Pr
 }
 
 export const getStatus = () => claraFetch<ClaraStatus>('status');
+export interface DashboardProject {
+  id: number;
+  name: string;
+  client_name: string;
+  updated_at: string;
+  inspirations: number;
+  thumbnail: string | null;
+  colors: string[];
+  fonts: string[];
+  hasDirection: boolean;
+}
+
+export interface DashboardData {
+  stats: { projects: number; inspirations: number; styled: number };
+  projects: DashboardProject[];
+  recent: { id: number; projectId: number; projectName: string; title: string; imageUrl: string; created_at: string }[];
+}
+
+export const getDashboard = () => claraFetch<DashboardData>('dashboard');
 export const listProjects = () => claraFetch<Project[]>('projects?per_page=50');
 export const getProject = (id: number) => claraFetch<Project>(`projects/${id}`);
 export const createProject = (data: ProjectInput) => claraFetch<Project>('projects', 'POST', data);
@@ -316,6 +337,7 @@ export const saveDesignSystem = (projectId: number, tokens: Tokens, note = '') =
 export const importDesignSystem = (projectId: number, content: string, filename: string) => claraFetch<DesignSystem>(ds(projectId, '/import'), 'POST', { content, filename });
 export const ingestFigma = (projectId: number) => claraFetch<DesignSystem>(ds(projectId, '/figma'), 'POST');
 export const importFigmaColors = (projectId: number, url: string) => claraFetch<DesignSystem>(ds(projectId, '/colors'), 'POST', { url });
+export const importFigmaTypography = (projectId: number, url: string) => claraFetch<DesignSystem>(ds(projectId, '/typography'), 'POST', { url });
 export const removeScreen = (projectId: number, assetId: number) => claraFetch<DesignSystem>(ds(projectId, `/screens/${assetId}`), 'DELETE');
 export const restoreDesignSystem = (id: number) => claraFetch<DesignSystem>(`design-systems/${id}/restore`, 'POST');
 export const getFigmaStatus = () => claraFetch<{ configured: boolean; capabilities: { styles: boolean; variables: boolean }; note: string }>('figma/status');
