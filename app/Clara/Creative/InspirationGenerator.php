@@ -479,6 +479,8 @@ class InspirationGenerator
 			$editor = wp_get_image_editor($path);
 			if (! is_wp_error($editor) && ($size[0] <= $maxWidth || ! is_wp_error($editor->resize($maxWidth, null)))) {
 				$editor->set_quality(82);
+				// wp_tempnam() jest w wp-admin — w żądaniach REST nie jest ładowane.
+				require_once ABSPATH . 'wp-admin/includes/file.php';
 				$tmp = wp_tempnam('clara-ref');
 				$saved = $editor->save($tmp . '.jpg', 'image/jpeg');
 				@unlink($tmp);
