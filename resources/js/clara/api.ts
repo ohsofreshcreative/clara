@@ -285,7 +285,7 @@ export interface Inspiration {
 export interface ApiError {
   code: string;
   message: string;
-  data?: { status?: number; errors?: Record<string, string> };
+  data?: { status?: number; errors?: Record<string, string>; error?: { message?: string; file?: string; line?: number } };
 }
 
 export const ATTACHMENT_TYPES = '.jpg,.jpeg,.png,.webp,.pdf';
@@ -456,9 +456,13 @@ function uploadFile<T>(route: string, file: File): Promise<T> {
 
 export function errorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
-    const { code, message } = error as ApiError;
-    // Błąd krytyczny PHP: WordPress zwraca HTML w treści komunikatu — pokazujemy czytelny tekst.
-    if (code === 'internal_server_error') return 'Błąd serwera (błąd krytyczny PHP). Szczegóły są w logu błędów PHP na serwerze.';
+    const { code, message, data } = error as ApiError;
+    // Błąd krytyczny PHP: WordPress zwraca HTML w komunikacie, a szczegóły (dla zalogowanego) w data.error.
+    if (code === 'internal_server_error') {
+      const php = data?.error;
+      const where = php?.file ? ` (${php.file.split('/').slice(-2).join('/')}:${php.line})` : '';
+      return `Błąd serwera (błąd krytyczny PHP)${php?.message ? `: ${php.message.split('\n')[0]}${where}` : '. Szczegóły są w logu błędów PHP na serwerze.'}`;
+    }
     return String(message).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   }
 

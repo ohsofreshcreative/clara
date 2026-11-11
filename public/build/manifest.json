@@ -29,7 +29,7 @@
     "src": "_swiper-HzbfsHSZ.css"
   },
   "editor.deps.json": {
-    "file": "assets/editor.deps-CFpspxql.json",
+    "file": "assets/editor.deps-CsMR_nnH.json",
     "src": "editor.deps.json"
   },
   "resources/css/app.css": {
@@ -183,7 +183,7 @@
     ]
   },
   "resources/js/clara/main.tsx": {
-    "file": "assets/main-CTXNkrfA.js",
+    "file": "assets/main-CtfH3Zh-.js",
     "name": "main",
     "src": "resources/js/clara/main.tsx",
     "isEntry": true,
