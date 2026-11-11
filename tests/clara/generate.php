@@ -100,7 +100,20 @@ try {
 	$items = $data['batch']['items'] ?? [];
 	$check('start → 201, 4 warianty queued, generator jeszcze nie wołany', $code === 201 && count($items) === 4 && ! array_filter($items, fn ($i) => $i['status'] !== 'queued') && $fake->prompts === [], [$code, $data['message'] ?? null, array_column($items, 'status')]);
 	$check('bez wybranego projektu — nowy projekt z nazwy z promptu', ($data['project']['name'] ?? '') === 'Sekcja Hero basen otwock h2otwock' && (int) Projects::find($pid)['owner_user_id'] === $a, $data['project'] ?? null);
-	$check('4 różne kompozycje', count(array_unique(array_column($items, 'title'))) === 4, array_column($items, 'title'));
+	$check('4 propozycje bez sztywnych układów (Propozycja 1–4)', array_column($items, 'title') === ['Propozycja 1', 'Propozycja 2', 'Propozycja 3', 'Propozycja 4'], array_column($items, 'title'));
+	$check('prompt „Hero” → sekcja hero z nawigacją', Sections::find((int) $data['section']['id'])['type'] === 'hero' && str_contains($items[0]['prompt'], 'hero section') && ! str_contains($items[0]['prompt'], 'split layout'), $items[0]['prompt']);
+
+	// Rodzaj sekcji z promptu — karty oferty to nie hero.
+	$kinds = ['karty oferty basenu: 3 pakiety wejść' => 'services', 'cennik karnetów' => 'pricing', 'FAQ o basenie' => 'faq', 'opinie klientów' => 'testimonials', 'stopka strony' => 'footer', 'sekcja z mapą dojazdu i formularzem' => 'contact', 'coś fajnego dla basenu' => 'other'];
+	$got = array_map(fn ($p) => InspirationGenerator::sectionKind($p), array_keys($kinds));
+	$check('rozpoznanie rodzaju sekcji z promptu', $got === array_values($kinds), array_combine(array_keys($kinds), $got));
+	[$code, $offer] = $req('POST', '/generate', $a, ['prompt' => 'karty oferty basenu: 3 pakiety wejść', 'projectId' => $pid]);
+	$offerPrompt = $offer['batch']['items'][0]['prompt'] ?? '';
+	$check('karty oferty → sekcja services, prompt kart bez hero i nawigacji', $code === 201 && Sections::find((int) $offer['section']['id'])['type'] === 'services' && str_starts_with($offer['section']['name'], 'Karty oferty') && str_contains($offerPrompt, 'services section made of cards') && str_contains($offerPrompt, 'not a hero') && ! str_contains($offerPrompt, 'hero section'), [$code, $offer['section'] ?? null, $offerPrompt]);
+	foreach ($offer['batch']['items'] ?? [] as $item) {
+		$req('POST', "/generate/{$item['id']}/render", $a);
+	}
+	$fake->prompts = [];
 	$check('koszt szacunkowy partii (4 × 0,05)', abs(($data['batch']['cost'] ?? 0) - 0.2) < 0.001 && ! $data['batch']['mock'], $data['batch']['cost'] ?? null);
 
 	// Krok 2: render każdego wariantu osobno.
@@ -151,7 +164,7 @@ try {
 	add_filter('pre_http_request', $openai, 99, 3);
 	[$code, $dirRun] = $req('POST', '/generate', $a, ['prompt' => 'sekcja Hero basen zima', 'projectId' => $pid, 'keepDirection' => true]);
 	$dirItems = $dirRun['batch']['items'] ?? [];
-	$check('start w kierunku → 4 odmiany, flaga keepDirection, sekcja „w kierunku”', $code === 201 && $dirRun['keepDirection'] === true && count($dirItems) === 4 && str_contains($dirRun['section']['name'], 'kierunku') && str_starts_with($dirItems[0]['title'], 'Kierunek'), [$code, $dirRun['code'] ?? null]);
+	$check('start w kierunku → 4 odmiany, flaga keepDirection, sekcja „w kierunku”', $code === 201 && $dirRun['keepDirection'] === true && count($dirItems) === 4 && str_contains($dirRun['section']['name'], 'kierunku') && str_starts_with($dirItems[0]['title'], 'W kierunku'), [$code, $dirRun['code'] ?? null]);
 	foreach ($dirItems as $item) {
 		$req('POST', "/generate/{$item['id']}/render", $a);
 	}
@@ -183,6 +196,23 @@ try {
 	[$code] = $req('POST', "/generate/{$refined['id']}/refine", $a);
 	[$code2] = $req('POST', "/generate/{$draftId}/refine", $b);
 	$check('refine: wariant już dopracowany 409, cudzy 404', $code === 409 && $code2 === 404, [$code, $code2]);
+
+	// Wzór stylu: screen referencyjny z design systemu + frame z Figmy idą do AI razem z promptem.
+	$screen = \App\Clara\Projects\Attachments::store($pid, $a, $jpeg, 'podstrona-oferta.jpg');
+	$frame = \App\Clara\Projects\Attachments::store($pid, $a, $jpeg, 'strona-glowna-figma-1.jpg');
+	$foreignShot = \App\Clara\Projects\Attachments::store((int) Projects::create(['name' => 'Obcy DS'], $b), $b, $jpeg, 'obcy.jpg');
+	\App\Clara\DesignSystems\DesignSystems::createVersion($pid, array_fill_keys(\App\Clara\DesignSystems\TokenSchema::GROUPS, []), [
+		['role' => 'figma_frame', 'frameName' => 'Strona główna'] + $frame,
+		['role' => 'reference_screen'] + $screen,
+		['role' => 'reference_screen'] + $foreignShot,
+	], ['type' => 'reference_screens']);
+	$refs = InspirationGenerator::styleReferences(Projects::find($pid), \App\Clara\DesignSystems\DesignSystems::latest($pid));
+	$check('wzór stylu: najpierw screeny, potem frame’y Figmy, bez cudzych plików', $refs === [(int) $screen['id'], (int) $frame['id']], $refs);
+	$sent = [];
+	[$code, $styled] = $req('POST', '/generate', $a, ['prompt' => 'karty oferty basenu na lato', 'projectId' => $pid]);
+	$req('POST', '/generate/' . $styled['batch']['items'][0]['id'] . '/render', $a);
+	$body = $sent[0]['body'] ?? '';
+	$check('generowanie ze screenami projektu → /images/edits z 2 obrazami i promptem „style reference”', $code === 201 && count($sent) === 1 && $sent[0]['url'] === OpenAiImageProvider::EDITS_ENDPOINT && substr_count($body, 'name="image[]"') === 2 && str_contains($body, 'style reference') && str_contains($body, 'services section made of cards'), [$code, count($sent), substr_count($body, 'name="image[]"')]);
 	remove_filter('pre_http_request', $openai, 99);
 	remove_all_filters('clara/openai_api_key');
 	add_filter('clara/image_provider', $fakeFilter);

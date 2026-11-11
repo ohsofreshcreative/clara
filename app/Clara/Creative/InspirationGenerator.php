@@ -4,13 +4,16 @@ namespace App\Clara\Creative;
 
 use App\Clara\Database\Schema;
 use App\Clara\DesignSystems\DesignSystems;
+use App\Clara\Projects\Attachments;
 use App\Clara\Projects\Projects;
+use App\Clara\Projects\SectionInput;
 use App\Clara\Projects\Sections;
 use App\Clara\Support\Validator;
 use WP_Error;
 
 /**
- * Dashboard: prompt (po polsku) → 4 obrazy-inspiracje całej sekcji.
+ * Dashboard: prompt (po polsku) → 4 obrazy-inspiracje sekcji. Rodzaj sekcji (hero, karty oferty,
+ * cennik, FAQ…) wynika z promptu; układ dobiera model, warianty różni tylko akcent nastroju.
  *
  * Dwa kroki, żeby UI pokazywało postęp: `start` od razu tworzy 4 warianty (status queued),
  * a `render` generuje jeden wariant — klient woła go równolegle dla każdego kafelka i pokazuje
@@ -21,39 +24,37 @@ use WP_Error;
  */
 class InspirationGenerator
 {
-	/** Kompozycje 4 wariantów — różnicują układ przy tym samym opisie. */
-	public const DIRECTIONS = [
-		'A' => ['layout' => 'split', 'title' => 'Podział', 'prompt' => 'split layout: headline, short text and CTA buttons on the left half, one large striking photograph on the right half'],
-		'B' => ['layout' => 'full-bleed', 'title' => 'Pełny kadr', 'prompt' => 'full-bleed cinematic photograph covering the whole section with a dark gradient overlay, big bold headline and CTA on top of the image'],
-		'C' => ['layout' => 'centered-type', 'title' => 'Typografia', 'prompt' => 'typography-first: huge centered headline as the main visual, minimal supporting imagery, generous whitespace, bold modern type'],
-		'D' => ['layout' => 'asymmetric-collage', 'title' => 'Kolaż', 'prompt' => 'asymmetric collage: text on the left, three overlapping photos of different sizes with rounded corners and playful graphic shapes on the right'],
+	/**
+	 * Rodzaj sekcji rozpoznany z promptu (pierwsze trafienie wygrywa). Bez trafienia generujemy dokładnie
+	 * to, co opisuje brief — nie zakładamy hero.
+	 */
+	public const SECTION_KINDS = [
+		'pricing' => ['pattern' => '/cennik|ceny|cenow|abonament|plan(y|ów)? (cenow|taryf)/u', 'label' => 'Cennik', 'prompt' => 'a pricing section with price plans / packages'],
+		'services' => ['pattern' => '/kart[ay]? ofert|ofert|usług|pakiet|atrakcj|produkt|kafelk|karty|kart /u', 'label' => 'Karty oferty', 'prompt' => 'an offer / services section made of cards (each card: image or icon, title, short description, link or button)'],
+		'faq' => ['pattern' => '/\bfaq\b|pytani|najczęściej/u', 'label' => 'FAQ', 'prompt' => 'an FAQ section with a list of questions and answers (accordion)'],
+		'contact' => ['pattern' => '/kontakt|formularz|mapa|dojazd/u', 'label' => 'Kontakt', 'prompt' => 'a contact section with contact details and a contact form or map'],
+		'gallery' => ['pattern' => '/galeri|zdjęci|portfolio|realizacj/u', 'label' => 'Galeria', 'prompt' => 'a gallery / portfolio section showing a grid of images'],
+		'testimonials' => ['pattern' => '/opini|referencj|recenzj|klienci mówią|testimonial/u', 'label' => 'Opinie', 'prompt' => 'a testimonials section with customer reviews'],
+		'about' => ['pattern' => '/o nas|o firmie|histori|zespół|zespol|misj/u', 'label' => 'O nas', 'prompt' => 'an about-us section telling the company story'],
+		'cta' => ['pattern' => '/\bcta\b|wezwani|newsletter|zapis/u', 'label' => 'Wezwanie do działania', 'prompt' => 'a call-to-action banner section'],
+		'footer' => ['pattern' => '/stopk|footer/u', 'label' => 'Stopka', 'prompt' => 'a website footer'],
+		'hero' => ['pattern' => '/\bhero\b|baner|banner|nagłówek strony|strona główna|top strony/u', 'label' => 'Hero', 'prompt' => 'a hero section at the top of a homepage, with a simple navigation bar'],
+	];
+
+	/**
+	 * Lekki akcent nastroju na wariant — tylko żeby 4 propozycje się różniły. Nie narzuca układu:
+	 * kompozycję model dobiera sam do rodzaju sekcji i briefu.
+	 */
+	public const MOODS = [
+		['light, airy and bright', 'dark, bold and high-contrast', 'colorful and graphic', 'minimal and elegant'],
+		['warm and natural', 'modern and techy', 'playful and friendly', 'premium and editorial'],
+		['soft pastel', 'monochrome with one strong accent color', 'photographic and atmospheric', 'geometric and structured'],
 	];
 
 	/** Odmiany w ramach obranego kierunku (ten sam styl, inny akcent). */
 	public const VARIATIONS = [
-		'A' => ['title' => 'Kierunek — dopracowany', 'prompt' => 'stay very close to the reference: same layout and style, refined details, better hierarchy and spacing'],
-		'B' => ['title' => 'Kierunek — nowe ujęcie', 'prompt' => 'same layout and style as the reference, but a different photograph / scene and a fresh headline'],
-		'C' => ['title' => 'Kierunek — mocniejsza typografia', 'prompt' => 'same visual style as the reference, with stronger typographic emphasis and a bolder headline treatment'],
-		'D' => ['title' => 'Kierunek — odważniej', 'prompt' => 'same palette, typography and mood as the reference, with a more dynamic, daring arrangement of elements'],
-	];
-
-	/** „Generuj jeszcze”: kolejne rundy biorą inne kompozycje z tej puli (po 4), potem wracają z innym ujęciem. */
-	public const MORE_DIRECTIONS = [
-		'E' => ['layout' => 'editorial', 'title' => 'Magazyn', 'prompt' => 'editorial magazine layout: oversized serif headline, narrow text column, one tall portrait photo, thin rules and generous margins'],
-		'F' => ['layout' => 'bento', 'title' => 'Bento', 'prompt' => 'bento grid: headline tile plus 4–5 rounded tiles of different sizes with photos, a key number and a short feature, all inside the hero'],
-		'G' => ['layout' => 'product-focus', 'title' => 'Produkt w centrum', 'prompt' => 'centered hero object or scene as a cut-out on a soft gradient background, headline above, CTA below, floating small info badges around it'],
-		'H' => ['layout' => 'video-frame', 'title' => 'Kadr filmowy', 'prompt' => 'wide letterboxed cinematic frame in the middle of the section with a play button, headline and CTA above it, dark moody atmosphere'],
-		'I' => ['layout' => 'diagonal', 'title' => 'Diagonala', 'prompt' => 'dynamic diagonal split: image cut with a bold angled edge, headline running along the diagonal, energetic sporty feel'],
-		'J' => ['layout' => 'illustration', 'title' => 'Ilustracja', 'prompt' => 'custom flat / 3D illustration as the main visual instead of a photo, playful shapes, friendly colors, headline and CTA on the left'],
-		'K' => ['layout' => 'stats', 'title' => 'Liczby', 'prompt' => 'headline with a row of 3 big statistics below it and a wide panoramic photo strip at the bottom of the section'],
-		'L' => ['layout' => 'minimal-dark', 'title' => 'Minimal noc', 'prompt' => 'ultra-minimal dark section: small precise headline, lots of negative space, one glowing accent detail and a single subtle photo'],
-	];
-
-	public const MORE_VARIATIONS = [
-		'E' => ['title' => 'Kierunek — inna pora dnia', 'prompt' => 'same style as the reference, but a different time of day / lighting in the photography'],
-		'F' => ['title' => 'Kierunek — bliżej ludzi', 'prompt' => 'same style as the reference, with a closer, more human and emotional photo'],
-		'G' => ['title' => 'Kierunek — więcej treści', 'prompt' => 'same style as the reference, extended with small feature badges or key facts under the headline'],
-		'H' => ['title' => 'Kierunek — spokojniej', 'prompt' => 'same style as the reference, calmer and more minimal, with more whitespace'],
+		['stay very close to the reference: same style, refined details, better hierarchy and spacing', 'same style as the reference, with different imagery and fresh copy', 'same visual style as the reference, with stronger typographic emphasis', 'same palette, typography and mood as the reference, with a more daring arrangement of elements'],
+		['same style as the reference, with different lighting / time of day in the imagery', 'same style as the reference, closer and more human imagery', 'same style as the reference, with a bit more content and detail', 'same style as the reference, calmer and more minimal, with more whitespace'],
 	];
 
 	public const ORIGIN = 'dashboard';
@@ -67,6 +68,11 @@ class InspirationGenerator
 	private const REFERENCE_WIDTH = 768;
 
 	private const REFINE_REFERENCE_WIDTH = 1024;
+
+	/** Screeny / frame'y projektu wysyłane jako wzór stylu (mniejsze — liczy się styl, nie detale). */
+	private const STYLE_REFS = 3;
+
+	private const STYLE_REFERENCE_WIDTH = 640;
 
 	private const RATE_LIMIT = 12;
 
@@ -119,13 +125,16 @@ class InspirationGenerator
 			$project = Projects::find(Projects::create(['name' => self::projectName($prompt), 'brief' => ['summary' => $prompt]], $userId));
 		}
 		// „Generuj jeszcze” dokłada warianty do tej samej sekcji (jedna galeria do remiksu).
-		$sectionName = $section ? $section['name'] : ($reference ? 'Hero — w kierunku projektu' : 'Hero — inspiracje');
-		$sectionId = $section ? (int) $section['id'] : Sections::create($project['id'], ['type' => 'hero', 'name' => $sectionName, 'requirements' => ['goal' => $prompt]]);
+		$kind = self::sectionKind($prompt);
+		$label = self::SECTION_KINDS[$kind]['label'] ?? 'Sekcja';
+		$sectionName = $section ? $section['name'] : $label . ($reference ? ' — w kierunku projektu' : ' — inspiracje');
+		$type = isset(SectionInput::TYPES[$kind]) ? $kind : 'other';
+		$sectionId = $section ? (int) $section['id'] : Sections::create($project['id'], ['type' => $type, 'name' => $sectionName, 'requirements' => ['goal' => $prompt]]);
 
 		if ($section) {
 			self::failAbandoned($sectionId);
 		}
-		$blocked = ImageJobs::guard($provider, $sectionId, count(self::DIRECTIONS));
+		$blocked = ImageJobs::guard($provider, $sectionId, 4);
 		if ($blocked) {
 			if ($created) {
 				Projects::delete((int) $project['id']);
@@ -136,10 +145,11 @@ class InspirationGenerator
 		}
 
 		$ds = DesignSystems::latest((int) $project['id']);
+		$styleRefs = self::styleReferences($project, $ds);
 		$batchId = wp_generate_uuid4();
 		$now = current_time('mysql', true);
 		foreach (self::round($round, (bool) $reference) as $key => $direction) {
-			$layout = $reference ? ($reference['layout'] ?: 'split') : $direction['layout'];
+			$layout = $reference ? ($reference['layout'] ?: 'free') : 'free';
 			if ($round > 0) {
 				$direction['prompt'] .= '. This is an additional proposal (round ' . ($round + 1) . '): make it clearly different from earlier proposals — fresh imagery, different color emphasis and arrangement';
 			}
@@ -147,7 +157,9 @@ class InspirationGenerator
 				'batchId' => $batchId,
 				'directionKey' => $key,
 				'title' => $direction['title'],
-				'prompt' => $reference ? self::referencePrompt($prompt, $direction['prompt']) : self::prompt($prompt, $direction['prompt'], $ds),
+				'prompt' => $reference ? self::referencePrompt($prompt, $direction['prompt'], $kind, count($styleRefs)) : self::prompt($prompt, $direction['prompt'], $ds, $kind, count($styleRefs)),
+				'sectionKind' => $kind,
+				'styleRefs' => $styleRefs,
 				'userPrompt' => $prompt,
 				'version' => 1,
 				'mock' => false,
@@ -183,14 +195,39 @@ class InspirationGenerator
 		}
 	}
 
-	/** Zestaw 4 kompozycji dla rundy: 0 = podstawowe, kolejne = pula „więcej”, w kółko. */
+	/** 4 warianty rundy: tytuł „Propozycja N” (numeracja ciągła między rundami) + akcent nastroju / odmiany. */
 	public static function round(int $round, bool $reference): array
 	{
-		$sets = $reference
-			? [self::VARIATIONS, self::MORE_VARIATIONS]
-			: [self::DIRECTIONS, array_slice(self::MORE_DIRECTIONS, 0, 4, true), array_slice(self::MORE_DIRECTIONS, 4, 4, true)];
+		$sets = $reference ? self::VARIATIONS : self::MOODS;
+		$set = $sets[$round % count($sets)];
+		$variants = [];
+		foreach (array_values($set) as $i => $hint) {
+			$n = $round * 4 + $i + 1;
+			$variants[chr(65 + ($round * 4 + $i) % 26)] = [
+				'title' => ($reference ? 'W kierunku — propozycja ' : 'Propozycja ') . $n,
+				'prompt' => $reference ? $hint : "visual mood: {$hint}",
+			];
+		}
 
-		return $sets[$round % count($sets)];
+		return $variants;
+	}
+
+	/** Rodzaj sekcji z promptu (klucz SECTION_KINDS) albo 'other' — wtedy decyduje sam brief. */
+	public static function sectionKind(string $prompt): string
+	{
+		$text = mb_strtolower($prompt);
+		foreach (self::SECTION_KINDS as $key => $kind) {
+			if (preg_match($kind['pattern'], $text)) {
+				return $key;
+			}
+		}
+
+		return 'other';
+	}
+
+	private static function kindPrompt(string $kind): string
+	{
+		return self::SECTION_KINDS[$kind]['prompt'] ?? 'exactly the kind of website section described in the client brief';
 	}
 
 	/** Generuje jeden wariant z `start` (idempotentnie: drugi wywołujący dostaje 409 albo gotowy wynik). */
@@ -220,11 +257,20 @@ class InspirationGenerator
 		if (! $provider || $provider->isMock() || $provider->id() !== $generation['provider']) {
 			$result = new WP_Error('clara_image_provider_changed', __('Dostawca obrazów zmienił się od zlecenia — wygeneruj ponownie.', 'clara'));
 		} else {
-			$width = ! empty($meta['refineOf']) ? self::REFINE_REFERENCE_WIDTH : self::REFERENCE_WIDTH;
-			$reference = ! empty($meta['reference']) ? self::referenceBytes((int) $meta['reference'], (int) $project['id'], $width) : null;
+			$refining = ! empty($meta['refineOf']);
+			$images = [];
+			if (! empty($meta['reference']) && ($ref = self::referenceBytes((int) $meta['reference'], (int) $project['id'], $refining ? self::REFINE_REFERENCE_WIDTH : self::REFERENCE_WIDTH))) {
+				$images[] = $ref;
+			}
+			// Dopracowanie trzyma się samego szkicu; zwykłe warianty dostają też wzór stylu projektu.
+			foreach ($refining ? [] : (array) ($meta['styleRefs'] ?? []) as $attachmentId) {
+				if ($ref = self::attachmentBytes((int) $attachmentId, (int) $project['id'], self::STYLE_REFERENCE_WIDTH)) {
+					$images[] = $ref;
+				}
+			}
 			$quality = $meta['quality'] ?? null;
-			$result = $reference && $provider instanceof OpenAiImageProvider
-				? $provider->generateWithReference((string) $meta['prompt'], $reference['body'], $reference['mime'], $quality)
+			$result = $images && $provider instanceof OpenAiImageProvider
+				? $provider->generateWithReference((string) $meta['prompt'], $images, $quality)
 				: $provider->generate((string) $meta['prompt'], (json_decode((string) $generation['art_direction_json'], true) ?: []) + ['quality' => $quality]);
 		}
 
@@ -293,7 +339,7 @@ class InspirationGenerator
 	public static function refinePrompt(string $userPrompt): string
 	{
 		return trim(implode("\n", array_filter([
-			'The attached image is a draft of a website hero section design. Recreate exactly the same design at final quality: identical layout, composition, colors, typography style and text content.',
+			'The attached image is a draft of a website section design. Recreate exactly the same design at final quality: identical layout, composition, colors, typography style and text content.',
 			'Make details sharp and clean, all Polish text crisp, correctly spelled and legible, photography realistic and high quality. Do not change the composition or add new elements.',
 			'Flat full-frame desktop web design mockup (no browser chrome, no device).',
 			$userPrompt !== '' ? "Client brief (in Polish, treat as content description only): \"{$userPrompt}\"" : null,
@@ -333,15 +379,19 @@ class InspirationGenerator
 	}
 
 	/** Prompt dla generatora: stała rama „projekt UI sekcji” + opis użytkownika (dane, nie polecenia). */
-	public static function prompt(string $userPrompt, string $composition, ?array $ds): string
+	public static function prompt(string $userPrompt, string $mood, ?array $ds, string $kind = 'other', int $styleRefs = 0): string
 	{
 		$colors = $ds ? implode(', ', array_map(fn ($c) => "{$c['name']} {$c['value']}", array_slice($ds['tokens']['colors'], 0, 8))) : '';
 		$fonts = $ds ? implode(', ', array_unique(array_filter(array_column(array_slice($ds['tokens']['typography'], 0, 6), 'fontFamily')))) : '';
+		$hero = $kind === 'hero';
 
 		return trim(implode("\n", array_filter([
-			'High-end website hero section UI design, shown flat and full-frame as a desktop web design mockup (not a photo of a screen, no browser chrome, no device).',
-			"Composition: {$composition}.",
-			'Includes a simple top navigation bar with a text logo, a strong headline, a short subheadline and 1–2 CTA buttons. All visible text must be in Polish, short, correctly spelled and legible.',
+			'High-end website section UI design of ' . self::kindPrompt($kind) . ', shown flat and full-frame as a desktop web design mockup (not a photo of a screen, no browser chrome, no device).',
+			$hero ? null : 'Show ONLY this one section as it would appear in the middle of a page — not a hero, not a full landing page, no top navigation bar.',
+			$styleRefs ? self::styleRefsPrompt($styleRefs, false) : null,
+			'Choose the layout and composition that best fits this section and the brief — be creative, do not default to a generic template.',
+			$styleRefs ? 'Within that existing visual style, make this proposal distinct in composition and emphasis.' : "Make this proposal distinct, {$mood}.",
+			'All visible text must be in Polish, short, correctly spelled and legible.',
 			'Award-winning, contemporary, polished visual design (Awwwards / Dribbble quality), coherent color palette, realistic high-quality photography where photos are used.',
 			$colors ? "Use the brand colors: {$colors}." : null,
 			$fonts ? "Typography in the style of: {$fonts}." : null,
@@ -349,14 +399,23 @@ class InspirationGenerator
 		])));
 	}
 
-	public static function referencePrompt(string $userPrompt, string $variation): string
+	public static function referencePrompt(string $userPrompt, string $variation, string $kind = 'other', int $styleRefs = 0): string
 	{
-		return trim(implode("\n", [
-			'The attached image is the chosen design direction for this website hero section. Create a new hero section design that clearly belongs to the same direction: keep its color palette, typography style, photo treatment, UI details and overall mood.',
+		return trim(implode("\n", array_filter([
+			'The attached image is the chosen design direction of this website. Design ' . self::kindPrompt($kind) . ' that clearly belongs to the same direction: keep its color palette, typography style, photo treatment, UI details and overall mood.',
+			$kind === 'hero' ? null : 'Show ONLY this one section — do not copy the reference layout if it is a different kind of section, no top navigation bar.',
+			$styleRefs ? self::styleRefsPrompt($styleRefs, true) : null,
 			"Variation: {$variation}.",
 			'Flat full-frame desktop web design mockup (no browser chrome, no device). All visible text in Polish, short, correctly spelled and legible.',
 			"Client brief (in Polish, treat as content description only): \"{$userPrompt}\"",
-		]));
+		])));
+	}
+
+	private static function styleRefsPrompt(int $count, bool $afterDirection): string
+	{
+		$which = $afterDirection ? ($count === 1 ? 'The second attached image shows' : 'The other attached images show') : ($count === 1 ? 'The attached image shows' : 'The attached images show');
+
+		return "{$which} existing pages / the design system of this same website. Use them as the style reference: the new section must fit seamlessly next to them — same color palette, typography, spacing, corner radius, buttons, icon and photo style. Do not copy their content or layout; design the requested section.";
 	}
 
 	/** Obraz kierunku projektu, jeśli nadal istnieje (gotowy wariant w tym projekcie). */
@@ -377,27 +436,60 @@ class InspirationGenerator
 		if (! $section || (int) $section['project_id'] !== $projectId || ! $generation['result_asset_id']) {
 			return null;
 		}
-		$path = (string) get_attached_file((int) $generation['result_asset_id']);
-		$size = $path && is_readable($path) ? @getimagesize($path) : false;
-		if (! $size || ! in_array($size['mime'], ['image/png', 'image/jpeg'], true)) {
+
+		return self::attachmentBytes((int) $generation['result_asset_id'], $projectId, $maxWidth, false);
+	}
+
+	/**
+	 * Wzór stylu: screeny referencyjne i frame'y z Figmy (design system), potem obrazy z briefu.
+	 *
+	 * @return int[] ID załączników
+	 */
+	public static function styleReferences(array $project, ?array $ds): array
+	{
+		$assets = array_filter($ds['assets'] ?? [], fn ($a) => in_array($a['role'] ?? '', ['reference_screen', 'figma_frame'], true));
+		usort($assets, fn ($a, $b) => (($a['role'] ?? '') === 'reference_screen' ? 0 : 1) <=> (($b['role'] ?? '') === 'reference_screen' ? 0 : 1));
+		$brief = array_filter($project['brief']['attachments'] ?? [], fn ($a) => str_starts_with((string) ($a['mime'] ?? ''), 'image/'));
+		$ids = array_map(fn ($a) => (int) ($a['id'] ?? 0), [...$assets, ...$brief]);
+		$ids = array_filter(array_unique($ids), fn ($id) => $id > 0 && self::attachmentBytes($id, (int) $project['id'], 1, true, true) !== null);
+
+		return array_slice(array_values($ids), 0, self::STYLE_REFS);
+	}
+
+	/**
+	 * Obraz załącznika jako pomniejszony JPEG (tylko do wysyłki — oryginał w mediach zostaje bez zmian).
+	 * $checkProject: załącznik musi należeć do projektu (meta _clara_project_id); $probe: tylko sprawdzenie.
+	 */
+	private static function attachmentBytes(int $attachmentId, int $projectId, int $maxWidth, bool $checkProject = true, bool $probe = false): ?array
+	{
+		if ($checkProject && (int) get_post_meta($attachmentId, Attachments::META, true) !== $projectId) {
 			return null;
 		}
+		$path = (string) get_attached_file($attachmentId);
+		$size = $path && is_readable($path) ? @getimagesize($path) : false;
+		if (! $size || ! in_array($size['mime'], ['image/png', 'image/jpeg', 'image/webp'], true)) {
+			return null;
+		}
+		if ($probe) {
+			return [];
+		}
 
-		// Pomniejszona kopia JPEG (tylko do wysyłki) — oryginał w mediach zostaje bez zmian.
-		if ($size[0] > $maxWidth) {
+		if ($size[0] > $maxWidth || $size['mime'] === 'image/webp') {
 			$editor = wp_get_image_editor($path);
-			if (! is_wp_error($editor) && ! is_wp_error($editor->resize($maxWidth, null))) {
+			if (! is_wp_error($editor) && ($size[0] <= $maxWidth || ! is_wp_error($editor->resize($maxWidth, null)))) {
 				$editor->set_quality(82);
-				$tmp = wp_tempnam('clara-ref') . '.jpg';
-				$saved = $editor->save($tmp, 'image/jpeg');
+				$tmp = wp_tempnam('clara-ref');
+				$saved = $editor->save($tmp . '.jpg', 'image/jpeg');
+				@unlink($tmp);
 				if (! is_wp_error($saved) && is_readable($saved['path'])) {
 					$body = (string) file_get_contents($saved['path']);
 					@unlink($saved['path']);
-					@unlink(substr($tmp, 0, -4));
 					return ['body' => $body, 'mime' => 'image/jpeg'];
 				}
-				@unlink(substr($tmp, 0, -4));
 			}
+		}
+		if ($size['mime'] === 'image/webp') {
+			return null;
 		}
 
 		return ['body' => (string) file_get_contents($path), 'mime' => $size['mime']];

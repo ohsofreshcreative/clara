@@ -174,7 +174,19 @@ class DesignSystemsController extends Controller
 			return new WP_Error('clara_figma_invalid', __('Style z Figmy zawierają wartości, których nie da się zapisać.', 'clara'), $tokens->get_error_data());
 		}
 
-		return $this->store($project['id'], $tokens, null, ['type' => 'figma_rest', 'warnings' => array_slice($result['warnings'], 0, 50)] + $result['meta']);
+		// Podglądy frame'ów zastępują poprzednie z Figmy; screeny dodane ręcznie zostają.
+		$assets = array_values(array_filter(DesignSystems::latest($project['id'])['assets'] ?? [], fn ($a) => ($a['role'] ?? '') !== 'figma_frame'));
+		$warnings = $result['warnings'];
+		foreach ($result['frames'] ?? [] as $i => $frame) {
+			$stored = Attachments::store($project['id'], get_current_user_id(), $frame['body'], sanitize_title($frame['name'] ?: 'frame') . '-figma-' . ($i + 1) . '.jpg');
+			if (is_wp_error($stored)) {
+				$warnings[] = "{$frame['name']}: " . $stored->get_error_message();
+				continue;
+			}
+			$assets[] = ['role' => 'figma_frame', 'frameName' => $frame['name']] + $stored;
+		}
+
+		return $this->store($project['id'], $tokens, $assets, ['type' => 'figma_rest', 'warnings' => array_slice($warnings, 0, 50)] + $result['meta']);
 	}
 
 	public function addScreen(WP_REST_Request $request): WP_REST_Response|WP_Error

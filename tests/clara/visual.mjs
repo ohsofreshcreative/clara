@@ -109,7 +109,7 @@ const seen = (locator) => locator.first().waitFor({ state: 'visible', timeout: 5
 
 /** Odpowiedzi POST /generate (4 warianty w kolejce) i POST /generate/{id}/render (jeden wariant) w kształcie z InspirationGenerator. */
 const SVG = (fill) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024"><rect width="100%" height="100%" fill="${fill}"/></svg>`)}`;
-const GEN_TITLES = ['Podział', 'Pełny kadr', 'Typografia', 'Kolaż'];
+const GEN_TITLES = ['Propozycja 1', 'Propozycja 2', 'Propozycja 3', 'Propozycja 4'];
 const genItem = (i, status, call = 0) => ({
   id: 990000 + call * 10 + i, parent_id: 0, directionKey: 'ABCD'[i], title: GEN_TITLES[i], status, statusLabel: '',
   error: status === 'failed' ? { code: 'clara_image_moderation', message: 'OpenAI odrzucił prompt przez zasady treści — zmień opis.' } : null,

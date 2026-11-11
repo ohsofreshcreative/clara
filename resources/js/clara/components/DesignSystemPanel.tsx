@@ -212,6 +212,7 @@ export default function DesignSystemPanel({ projectId, hasFigmaUrl }: { projectI
 
       <div className="flex flex-col gap-3">
         <h3 className="font-semibold">Screeny referencyjne</h3>
+        <p className="text-sm text-muted">Screeny i frame’y z Figmy trafiają do AI jako wzór stylu przy generowaniu inspiracji (do 3 na raz).</p>
         {current && current.assets.length > 0 && (
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {current.assets.map((asset) => (
@@ -219,6 +220,7 @@ export default function DesignSystemPanel({ projectId, hasFigmaUrl }: { projectI
                 <a href={asset.url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-xl border border-line">
                   <img src={asset.url} alt={`Screen referencyjny: ${asset.name}`} className="aspect-video w-full object-cover" />
                 </a>
+                {asset.role === 'figma_frame' && <span className="text-xs text-muted">Frame z Figmy · {String((asset as { frameName?: string }).frameName ?? asset.name)}</span>}
                 <Button variant="ghost" onClick={() => run(() => removeScreen(projectId, asset.id), (ds) => `Usunięto screen — v${ds.version}.`)}>Usuń</Button>
               </li>
             ))}

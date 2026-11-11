@@ -89,10 +89,14 @@ class OpenAiImageProvider implements ImageProvider
 	 * Generowanie z obrazem referencyjnym (kierunek projektu): endpoint edits przyjmuje obraz
 	 * jako wzorzec stylu, a prompt opisuje nowy wariant.
 	 */
-	public function generateWithReference(string $prompt, string $imageBytes, string $mime, ?string $quality = null): array|WP_Error
+	/**
+	 * /images/edits z obrazami referencyjnymi (kierunek, szkic, screeny / frame'y projektu).
+	 *
+	 * @param array<int, array{body: string, mime: string}> $images
+	 */
+	public function generateWithReference(string $prompt, array $images, ?string $quality = null): array|WP_Error
 	{
 		$boundary = 'clara' . wp_generate_password(24, false, false);
-		$ext = $mime === 'image/png' ? 'png' : 'jpg';
 		$fields = [
 			'model' => $this->model(),
 			'prompt' => $prompt,
@@ -105,7 +109,11 @@ class OpenAiImageProvider implements ImageProvider
 		foreach ($fields as $name => $value) {
 			$body .= "--{$boundary}\r\nContent-Disposition: form-data; name=\"{$name}\"\r\n\r\n{$value}\r\n";
 		}
-		$body .= "--{$boundary}\r\nContent-Disposition: form-data; name=\"image[]\"; filename=\"reference.{$ext}\"\r\nContent-Type: {$mime}\r\n\r\n{$imageBytes}\r\n--{$boundary}--\r\n";
+		foreach (array_values($images) as $i => $image) {
+			$ext = $image['mime'] === 'image/png' ? 'png' : 'jpg';
+			$body .= "--{$boundary}\r\nContent-Disposition: form-data; name=\"image[]\"; filename=\"reference-{$i}.{$ext}\"\r\nContent-Type: {$image['mime']}\r\n\r\n{$image['body']}\r\n";
+		}
+		$body .= "--{$boundary}--\r\n";
 
 		$response = wp_remote_post(self::EDITS_ENDPOINT, [
 			'timeout' => self::TIMEOUT,

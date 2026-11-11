@@ -18,6 +18,11 @@ class FigmaClient
 
 	private const MAX_STYLES = 200;
 
+	/** Podglądy głównych frame'ów (podstron) jako referencje stylu dla generatora inspiracji. */
+	public const MAX_FRAMES = 4;
+
+	private const MIN_FRAME_WIDTH = 600;
+
 	public static function token(): string
 	{
 		$token = defined('CLARA_FIGMA_TOKEN') ? (string) CLARA_FIGMA_TOKEN : (string) getenv('CLARA_FIGMA_TOKEN');
@@ -45,7 +50,8 @@ class FigmaClient
 	 */
 	public static function ingest(string $fileKey): array|WP_Error
 	{
-		$file = self::get('files/' . rawurlencode($fileKey) . '?depth=1');
+		// depth=2: strony + ich frame'y najwyższego poziomu (bez całego drzewa).
+		$file = self::get('files/' . rawurlencode($fileKey) . '?depth=2');
 
 		if (is_wp_error($file)) {
 			return $file;
@@ -83,8 +89,11 @@ class FigmaClient
 			$warnings[] = 'Plik nie ma lokalnych stylów. Zmienne Figmy nie są dostępne przez REST poza planem Enterprise — użyj importu JSON.';
 		}
 
+		$frames = self::frames($fileKey, $file, $warnings);
+
 		return [
 			'tokens' => $tokens,
+			'frames' => $frames,
 			'warnings' => $warnings,
 			'meta' => [
 				'fileKey' => $fileKey,
@@ -92,9 +101,56 @@ class FigmaClient
 				'lastModified' => sanitize_text_field((string) ($file['lastModified'] ?? '')),
 				'figmaVersion' => sanitize_text_field((string) ($file['version'] ?? '')),
 				'stylesFound' => count($styles),
-				'endpoints' => ['GET /v1/files/:key?depth=1', 'GET /v1/files/:key/nodes'],
+				'framesFound' => count($frames),
+				'endpoints' => ['GET /v1/files/:key?depth=2', 'GET /v1/files/:key/nodes', 'GET /v1/images/:key'],
 			],
 		];
+	}
+
+	/**
+	 * Renderuje do MAX_FRAMES szerokich frame'ów (JPG, skala 0.5) i pobiera je. Błąd podglądów nie przerywa
+	 * importu stylów — trafia do ostrzeżeń.
+	 *
+	 * @return array<int, array{name: string, body: string}>
+	 */
+	private static function frames(string $fileKey, array $file, array &$warnings): array
+	{
+		$picked = [];
+		foreach ($file['document']['children'] ?? [] as $page) {
+			foreach ($page['children'] ?? [] as $node) {
+				$width = (float) ($node['absoluteBoundingBox']['width'] ?? 0);
+				if (in_array($node['type'] ?? '', ['FRAME', 'COMPONENT', 'SECTION'], true) && $width >= self::MIN_FRAME_WIDTH && ($node['visible'] ?? true)) {
+					$picked[(string) $node['id']] = sanitize_text_field((string) ($node['name'] ?? 'Frame'));
+				}
+				if (count($picked) >= self::MAX_FRAMES) {
+					break 2;
+				}
+			}
+		}
+		if (! $picked) {
+			return [];
+		}
+
+		$images = self::get('images/' . rawurlencode($fileKey) . '?ids=' . rawurlencode(implode(',', array_keys($picked))) . '&format=jpg&scale=0.5');
+		if (is_wp_error($images)) {
+			$warnings[] = 'Nie udało się pobrać podglądów frame’ów: ' . $images->get_error_message();
+			return [];
+		}
+
+		$frames = [];
+		foreach ($picked as $id => $name) {
+			$url = (string) ($images['images'][$id] ?? '');
+			// Figma zwraca tymczasowe linki do własnego magazynu (https) — pobieramy bez tokenu.
+			$response = $url !== '' && str_starts_with($url, 'https://') ? wp_safe_remote_get($url, ['timeout' => 20]) : null;
+			$body = $response && ! is_wp_error($response) && (int) wp_remote_retrieve_response_code($response) === 200 ? (string) wp_remote_retrieve_body($response) : '';
+			if ($body === '') {
+				$warnings[] = "{$name}: nie udało się pobrać podglądu frame’a.";
+				continue;
+			}
+			$frames[] = ['name' => $name, 'body' => $body];
+		}
+
+		return $frames;
 	}
 
 	private static function mapStyle(string $type, string $name, array $node, array &$tokens, array &$warnings): void

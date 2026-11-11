@@ -218,6 +218,30 @@ try {
 	[$code, $data] = $req('POST', "{$base}/figma", $a);
 	$check('Figma: lokalny odstęp między pobraniami → 429', $code === 429, $code);
 
+	// Podglądy frame'ów: szerokie frame'y → /v1/images → pobranie z magazynu Figmy → assety figma_frame.
+	delete_transient("clara_figma_{$pid}");
+	$png = (string) file_get_contents(get_theme_file_path('resources/images/clara/hero-figure.jpg'));
+	$s3 = function ($pre, $args, $url) use ($png) {
+		return str_starts_with($url, 'https://figma-alpha-api.s3.example/') ? ['response' => ['code' => 200, 'message' => 'OK'], 'headers' => [], 'body' => $png, 'cookies' => [], 'filename' => null] : $pre;
+	};
+	add_filter('pre_http_request', $s3, 5, 3);
+	$figmaCalls = [];
+	$figmaMock = fn ($url) => str_contains($url, '/images/')
+		? $json(200, ['images' => ['10:1' => 'https://figma-alpha-api.s3.example/a.jpg', '10:2' => 'https://figma-alpha-api.s3.example/b.jpg']])
+		: $json(200, ['name' => 'H2Otwock DS', 'styles' => [], 'document' => ['children' => [['type' => 'CANVAS', 'children' => [
+			['id' => '10:1', 'type' => 'FRAME', 'name' => 'Strona główna', 'absoluteBoundingBox' => ['width' => 1440]],
+			['id' => '10:2', 'type' => 'FRAME', 'name' => 'Oferta', 'absoluteBoundingBox' => ['width' => 1440]],
+			['id' => '10:3', 'type' => 'FRAME', 'name' => 'Przycisk', 'absoluteBoundingBox' => ['width' => 120]],
+		]]]]]);
+	[$code, $withFrames] = $req('POST', "{$base}/figma", $a);
+	$frames = array_values(array_filter($withFrames['assets'] ?? [], fn ($x) => ($x['role'] ?? '') === 'figma_frame'));
+	$check('Figma: szerokie frame’y zapisane jako podglądy (bez małych elementów)', $code === 201 && array_column($frames, 'frameName') === ['Strona główna', 'Oferta'] && $withFrames['source']['framesFound'] === 2, [$code, $frames, $withFrames['source'] ?? null]);
+	$check('Figma: podglądy z /v1/images (jpg, skala 0.5)', (bool) array_filter($figmaCalls, fn ($c) => str_contains($c['url'], '/v1/images/AbCdEf1234567890XyZ?ids=') && str_contains($c['url'], 'format=jpg&scale=0.5')), array_column($figmaCalls, 'url'));
+	delete_transient("clara_figma_{$pid}");
+	[$code, $again] = $req('POST', "{$base}/figma", $a);
+	$check('Figma: ponowny import zastępuje podglądy frame’ów (bez duplikatów)', $code === 201 && count(array_filter($again['assets'], fn ($x) => ($x['role'] ?? '') === 'figma_frame')) === 2, $code);
+	remove_filter('pre_http_request', $s3, 5);
+
 	$errorsByStatus = [
 		[fn () => $json(403, ['status' => 403, 'err' => 'Invalid token ' . FAKE_TOKEN]), 502, 'nie ma dostępu'],
 		[fn () => $json(404, ['status' => 404]), 502, 'Nie znaleziono pliku'],

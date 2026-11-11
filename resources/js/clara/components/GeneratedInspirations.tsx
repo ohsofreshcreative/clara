@@ -29,7 +29,7 @@ function LoadingTile({ item, elapsed, index }: { item: ImageItem; elapsed: numbe
       <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,color-mix(in_srgb,var(--color-accent-500)_12%,transparent),transparent_60%)]" />
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
         <span aria-hidden="true" className="size-7 rounded-full border-2 border-accent-300/15 border-t-accent-300/70 motion-safe:animate-spin [animation-duration:1.6s]" />
-        <p className="font-medium">Wariant {item.directionKey} · {item.title}</p>
+        <p className="font-medium">{item.title}</p>
         <p className="text-sm text-muted">{step}</p>
       </div>
     </div>
@@ -135,7 +135,7 @@ export default function GeneratedInspirations({ result, startedAt, more = false,
               )}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h3 id={`inspiration-${item.id}`} className="font-semibold">
-                  Wariant {item.directionKey} · {item.title}
+                  {item.title}
                   {item.refineOf ? <span className="ml-2 text-sm font-normal text-accent-300">· dopracowany</span> : item.quality === 'low' ? <span className="ml-2 text-sm font-normal text-muted">· szkic</span> : null}
                 </h3>
                 {item.image && (
